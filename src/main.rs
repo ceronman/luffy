@@ -1,20 +1,18 @@
-use crate::lexer::{Lexer, TokenKind};
-
+pub mod ast;
+pub mod error;
 pub mod lexer;
+pub mod parser;
 
 fn main() {
     let code = r#"
+    fn main() {
         let a Int = 1
         let b Float = 1.0
         let c Bool = true
+        print_int(a)
+    }
     "#;
 
-    let mut lexer = Lexer::new(code);
-    loop {
-        let token = lexer.next_token();
-        if let TokenKind::Eof = token.kind {
-            break;
-        }
-        println!("{:?}", token);
-    }
+    let module = parser::parse(code).expect("parse error");
+    println!("{:#?}", module);
 }

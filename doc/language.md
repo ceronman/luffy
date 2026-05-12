@@ -27,4 +27,8 @@ fn add(a Int, b Int) Int {
     return a + b
 }
 
+fn main() {
+    print_int(1)
+}
+
 print_int(a)
