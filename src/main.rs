@@ -1,4 +1,5 @@
 pub mod ast;
+pub mod emit;
 pub mod error;
 pub mod lexer;
 pub mod parser;
@@ -15,4 +16,7 @@ fn main() {
 
     let module = parser::parse(code).expect("parse error");
     println!("{:#?}", module);
+
+    let wasm = emit::emit();
+    emit::run(&wasm).unwrap();
 }
