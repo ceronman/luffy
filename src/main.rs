@@ -3,18 +3,24 @@ pub mod emit;
 pub mod error;
 pub mod lexer;
 pub mod parser;
+pub mod pretty;
 
 fn main() {
     let code = r#"
-    fn main() {
-        let a Int = 1
-        let b Float = 1.0
-        let c Bool = true
-        print_int(a)
+    fn add(a Int, b Int) Int {
+        return a + b
     }
     "#;
 
-    let module = parser::parse(code).expect("parse error");
+    let module = match parser::parse(code) {
+        Ok(module) => module,
+        Err(err) => {
+            let annotated = pretty::annotate(code, &err);
+            eprintln!("{}", annotated);
+            return;
+        }
+    };
+
     println!("{:#?}", module);
 
     let wasm = emit::emit();
