@@ -94,7 +94,7 @@ pub enum ExprKind {
     },
     Unary {
         op: UnOp,
-        right: Box<Expr>,
+        expr: Box<Expr>,
     },
     Binary {
         op: BinOp,

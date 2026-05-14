@@ -1,6 +1,8 @@
+pub mod ast;
+
 use crate::error::CompilerError;
 
-pub fn annotate(src: &str, error: &CompilerError) -> String {
+pub fn annotate_error(src: &str, error: &CompilerError) -> String {
     let mut result = String::new();
     let mut offset = 0;
     let mut annotated = false;

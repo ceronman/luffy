@@ -185,7 +185,7 @@ impl<'src> Parser<'src> {
             node: self.node(operator.node.span, right.node.span),
             kind: ExprKind::Unary {
                 op: operator,
-                right: right.into(),
+                expr: right.into(),
             },
         })
     }

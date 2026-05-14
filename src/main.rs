@@ -15,14 +15,14 @@ fn main() {
     let module = match parser::parse(code) {
         Ok(module) => module,
         Err(err) => {
-            let annotated = pretty::annotate(code, &err);
+            let annotated = pretty::annotate_error(code, &err);
             eprintln!("{}", annotated);
             return;
         }
     };
 
-    println!("{:#?}", module);
-
+    let pretty = pretty::ast::print(&module).expect("Failed to pretty-print AST");
+    println!("{pretty}");
     let wasm = emit::emit();
     emit::run(&wasm).unwrap();
 }
