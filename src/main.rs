@@ -24,5 +24,7 @@ fn main() {
     let pretty = pretty::ast::print(&module).expect("Failed to pretty-print AST");
     println!("{pretty}");
     let wasm = emit::emit();
+    let wat = wasmprinter::print_bytes(&wasm).expect("Failed to print Wasm binary");
+    println!("Running:\n{}", wat);
     emit::run(&wasm).unwrap();
 }

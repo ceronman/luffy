@@ -709,7 +709,8 @@ checksum = "5e5032e24019045c762d3c0f28f5b6b8bbf38563a65908389bf7978758920897"
 name = "luffy"
 version = "0.1.0"
 dependencies = [
- "wasm-encoder 0.248.0",
+ "wasm-encoder 0.249.0",
+ "wasmprinter 0.249.0",
  "wasmtime",
 ]
 
@@ -1303,6 +1304,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "wasm-encoder"
+version = "0.249.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "69830ccbbf41c55eb585991659fb70867ef628193af3a495f09a6956f7615e59"
+dependencies = [
+ "leb128fmt",
+ "wasmparser 0.249.0",
+]
+
+[[package]]
 name = "wasm-metadata"
 version = "0.244.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1351,6 +1362,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "wasmparser"
+version = "0.249.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "30538cae9a794215f490b532df01c557e2e2bfac92569482554acd0992a102ea"
+dependencies = [
+ "bitflags",
+ "indexmap",
+ "semver",
+]
+
+[[package]]
 name = "wasmprinter"
 version = "0.246.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1359,6 +1381,17 @@ dependencies = [
  "anyhow",
  "termcolor",
  "wasmparser 0.246.2",
+]
+
+[[package]]
+name = "wasmprinter"
+version = "0.249.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a4e227e800fc74c0d60117391f71d60e4c956333cfc3be796ae72d269002aa52"
+dependencies = [
+ "anyhow",
+ "termcolor",
+ "wasmparser 0.249.0",
 ]
 
 [[package]]
@@ -1440,7 +1473,7 @@ dependencies = [
  "target-lexicon",
  "wasm-encoder 0.246.2",
  "wasmparser 0.246.2",
- "wasmprinter",
+ "wasmprinter 0.246.2",
  "wasmtime-internal-component-util",
  "wasmtime-internal-core",
 ]
