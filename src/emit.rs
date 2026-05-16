@@ -37,7 +37,7 @@ pub fn emit(module: ir::Module) -> Vec<u8> {
     let mut exports = ExportSection::new();
     for e in &module.exports {
         match e.kind {
-            ir::ExportKind::Func(fn_idx) => {
+            ir::ExportKind::Function(fn_idx) => {
                 exports.export(&e.name, ExportKind::Func, fn_idx);
             }
         }

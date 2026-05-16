@@ -40,5 +40,5 @@ pub struct Export {
 }
 
 pub enum ExportKind {
-    Func(FuncIdx),
+    Function(FuncIdx),
 }

@@ -1,4 +1,5 @@
 pub mod ast;
+pub mod compiler;
 pub mod emit;
 pub mod error;
 pub mod ir;
@@ -8,7 +9,7 @@ pub mod pretty;
 
 fn main() {
     let code = r#"
-    fn add(a Int, b Int) Int {
+    fn f(a Int, b Int) Int {
         return a + b
     }
     "#;
@@ -25,26 +26,7 @@ fn main() {
     let pretty = pretty::ast::print(&module).expect("Failed to pretty-print AST");
     println!("{pretty}");
 
-    let module = ir::Module {
-        types: vec![ir::Type::Function(ir::FuncType {
-            params: vec![ir::ValType::I64, ir::ValType::I64],
-            results: vec![ir::ValType::I64],
-        })],
-        functions: vec![ir::Function {
-            ty: 0,
-            body: vec![
-                ir::Instruction::LocalGet(0),
-                ir::Instruction::LocalGet(1),
-                ir::Instruction::I64Add,
-                ir::Instruction::End,
-            ],
-        }],
-        exports: vec![ir::Export {
-            name: "f".to_string(),
-            kind: ir::ExportKind::Func(0),
-        }],
-    };
-
+    let module = compiler::compile(&module);
     let wasm = emit::emit(module);
     let wat = wasmprinter::print_bytes(&wasm).expect("Failed to print Wasm binary");
     println!("Running:\n{}", wat);
