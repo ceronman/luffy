@@ -24,8 +24,8 @@ pub enum ValType {
 }
 
 pub struct Function {
-    ty: TypeIdx,
-    body: Vec<Instruction>,
+    pub ty: TypeIdx,
+    pub body: Vec<Instruction>,
 }
 
 pub enum Instruction {
@@ -34,6 +34,11 @@ pub enum Instruction {
     End,
 }
 
-pub enum Export {
+pub struct Export {
+    pub name: String,
+    pub kind: ExportKind,
+}
+
+pub enum ExportKind {
     Func(FuncIdx),
 }
