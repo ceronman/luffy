@@ -26,7 +26,14 @@ fn main() {
     let pretty = pretty::ast::print(&module).expect("Failed to pretty-print AST");
     println!("{pretty}");
 
-    let module = compiler::compile(&module);
+    let module = match compiler::compile(&module) {
+        Ok(module) => module,
+        Err(err) => {
+            let annotated = pretty::annotate_error(code, &err);
+            eprintln!("Compilation Error: {}", annotated);
+            return;
+        }
+    };
     let wasm = emit::emit(module);
     let wat = wasmprinter::print_bytes(&wasm).expect("Failed to print Wasm binary");
     println!("Running:\n{}", wat);
