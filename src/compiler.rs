@@ -1,12 +1,18 @@
 use crate::error::CompilerError;
-use crate::{ast, ir};
+use crate::ir::LocalIdx;
+use crate::semantic::{DeclarationId, DeclarationKind};
+use crate::{ast, ir, semantic};
+use std::collections::HashMap;
 
-struct Compiler {}
+struct Compiler {
+    addresses: HashMap<DeclarationId, LocalIdx>,
+    semantics: semantic::Semantics,
+}
 
 pub type Result<T> = std::result::Result<T, CompilerError>;
 
 impl Compiler {
-    fn compile(&self, module: &ast::Module) -> Result<ir::Module> {
+    fn module(&self, module: &ast::Module) -> Result<ir::Module> {
         let mut types = Vec::new();
         let mut functions = Vec::new();
         let mut exports = Vec::new();
@@ -68,11 +74,20 @@ impl Compiler {
     fn expr(&self, ins: &mut Vec<ir::Instruction>, expr: &ast::Expr) -> Result<()> {
         match &expr.kind {
             ast::ExprKind::Literal { .. } => todo!(),
-            ast::ExprKind::Variable { name } => match name.symbol.as_str() {
-                "a" => ins.push(ir::Instruction::LocalGet(0)),
-                "b" => ins.push(ir::Instruction::LocalGet(1)),
-                _ => todo!(),
-            },
+            ast::ExprKind::Variable { name } => {
+                let decl_id = self
+                    .semantics
+                    .uses
+                    .get(&name.node.id)
+                    .copied()
+                    .expect("Undeclared identifier");
+                let address = self
+                    .addresses
+                    .get(&decl_id)
+                    .copied()
+                    .expect("Address not found for declaration");
+                ins.push(ir::Instruction::LocalGet(address))
+            }
             ast::ExprKind::Unary { .. } => todo!(),
             ast::ExprKind::Binary { op, left, right } => match &op.kind {
                 ast::BinOpKind::Add => {
@@ -93,6 +108,20 @@ impl Compiler {
             kind: ir::ExportKind::Function(func_idx),
         })
     }
+
+    fn calculate_addresses(&mut self) {
+        let mut local_indices: HashMap<DeclarationId, LocalIdx> = HashMap::new();
+        for decl in &self.semantics.declarations {
+            let address = match decl.kind {
+                DeclarationKind::Local(fn_id) => *local_indices
+                    .entry(fn_id)
+                    .and_modify(|count| *count += 1)
+                    .or_insert(0),
+                _ => continue,
+            };
+            self.addresses.insert(decl.id, address);
+        }
+    }
 }
 
 impl ast::TypeKind {
@@ -105,7 +134,11 @@ impl ast::TypeKind {
     }
 }
 
-pub fn compile(module: &ast::Module) -> Result<ir::Module> {
-    let compiler = Compiler {};
-    compiler.compile(module)
+pub fn compile(module: &ast::Module, semantics: semantic::Semantics) -> Result<ir::Module> {
+    let mut compiler = Compiler {
+        semantics,
+        addresses: Default::default(),
+    };
+    compiler.calculate_addresses();
+    compiler.module(module)
 }

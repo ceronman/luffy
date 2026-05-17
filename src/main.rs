@@ -6,6 +6,7 @@ pub mod ir;
 pub mod lexer;
 pub mod parser;
 pub mod pretty;
+pub mod semantic;
 
 fn main() {
     let code = r#"
@@ -26,7 +27,16 @@ fn main() {
     let pretty = pretty::ast::print(&module).expect("Failed to pretty-print AST");
     println!("{pretty}");
 
-    let module = match compiler::compile(&module) {
+    let semantics = match semantic::semantic_analysis(&module) {
+        Ok(semantics) => semantics,
+        Err(err) => {
+            let annotated = pretty::annotate_error(code, &err);
+            eprintln!("Resolve Error: {}", annotated);
+            return;
+        }
+    };
+
+    let module = match compiler::compile(&module, semantics) {
         Ok(module) => module,
         Err(err) => {
             let annotated = pretty::annotate_error(code, &err);

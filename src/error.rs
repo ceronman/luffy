@@ -10,4 +10,7 @@ pub struct CompilerError {
 #[derive(Debug)]
 pub enum ErrorKind {
     Parse,
+    Resolve,
+    Type,
+    Compile,
 }
