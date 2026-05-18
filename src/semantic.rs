@@ -93,6 +93,7 @@ impl Resolver {
 
     fn function(&mut self, f: &Function) -> Result<()> {
         let decl_id = self.declare(&f.name, DeclarationKind::Function)?;
+        self.semantics.uses.insert(f.name.node.id, decl_id);
 
         self.begin_scope();
 
@@ -100,22 +101,27 @@ impl Resolver {
             self.declare_local(name, decl_id)?
         }
 
-        self.stmt(&f.body)?;
+        self.stmt(&f.body, decl_id)?;
 
         self.end_scope();
 
         Ok(())
     }
 
-    fn stmt(&mut self, stmt: &Stmt) -> Result<()> {
+    fn stmt(&mut self, stmt: &Stmt, func_id: DeclarationId) -> Result<()> {
         match &stmt.kind {
             StmtKind::ExprStmt { .. } => todo!(),
             StmtKind::Block { statements } => {
                 for stmt in statements {
-                    self.stmt(stmt)?;
+                    self.stmt(stmt, func_id)?;
                 }
             }
-            StmtKind::Declaration { .. } => todo!(),
+            StmtKind::Declaration {
+                name, initializer, ..
+            } => {
+                self.declare_local(name, func_id)?;
+                self.expr(initializer)?;
+            }
             StmtKind::Assignment { .. } => todo!(),
             StmtKind::Return { expr } => {
                 self.expr(expr)?;

@@ -1,12 +1,12 @@
 use crate::error::CompilerError;
 use crate::ir::LocalIdx;
-use crate::semantic::{DeclarationId, DeclarationKind};
+use crate::semantic::{Declaration, DeclarationId, DeclarationKind, Semantics};
 use crate::{ast, ir, semantic};
 use std::collections::HashMap;
 
 struct Compiler {
     addresses: HashMap<DeclarationId, LocalIdx>,
-    semantics: semantic::Semantics,
+    semantics: Semantics,
 }
 
 pub type Result<T> = std::result::Result<T, CompilerError>;
@@ -48,10 +48,16 @@ impl Compiler {
     }
 
     fn function(&self, ty: ir::TypeIdx, function: &ast::Function) -> Result<ir::Function> {
+        let func_id = self.declaration_id(&function.name);
+        let locals = self
+            .function_locals(func_id)
+            .skip(function.params.len())
+            .map(|_d| ir::ValType::I64)
+            .collect::<Vec<ir::ValType>>();
         let mut body = Vec::new();
         self.stmt(&mut body, &function.body)?;
         body.push(ir::Instruction::End);
-        Ok(ir::Function { ty, body })
+        Ok(ir::Function { ty, locals, body })
     }
 
     fn stmt(&self, ins: &mut Vec<ir::Instruction>, stmt: &ast::Stmt) -> Result<()> {
@@ -62,7 +68,15 @@ impl Compiler {
                     self.stmt(ins, stmt)?;
                 }
             }
-            ast::StmtKind::Declaration { .. } => todo!(),
+            ast::StmtKind::Declaration {
+                name,
+                initializer: value,
+                ..
+            } => {
+                self.expr(ins, value)?;
+                let address = self.local_addr(name);
+                ins.push(ir::Instruction::LocalSet(address));
+            }
             ast::StmtKind::Assignment { .. } => todo!(),
             ast::StmtKind::Return { expr } => {
                 self.expr(ins, expr)?;
@@ -73,19 +87,12 @@ impl Compiler {
 
     fn expr(&self, ins: &mut Vec<ir::Instruction>, expr: &ast::Expr) -> Result<()> {
         match &expr.kind {
-            ast::ExprKind::Literal { .. } => todo!(),
+            ast::ExprKind::Literal { kind } => match kind {
+                ast::LiteralKind::Int(value) => ins.push(ir::Instruction::I64Const(*value)),
+                _ => todo!(),
+            },
             ast::ExprKind::Variable { name } => {
-                let decl_id = self
-                    .semantics
-                    .uses
-                    .get(&name.node.id)
-                    .copied()
-                    .expect("Undeclared identifier");
-                let address = self
-                    .addresses
-                    .get(&decl_id)
-                    .copied()
-                    .expect("Address not found for declaration");
+                let address = self.local_addr(name);
                 ins.push(ir::Instruction::LocalGet(address))
             }
             ast::ExprKind::Unary { .. } => todo!(),
@@ -121,6 +128,37 @@ impl Compiler {
             };
             self.addresses.insert(decl.id, address);
         }
+    }
+
+    fn local_addr(&self, identifier: &ast::Identifier) -> LocalIdx {
+        let decl_id = self
+            .semantics
+            .uses
+            .get(&identifier.node.id)
+            .copied()
+            .expect("Undeclared identifier");
+        self.addresses
+            .get(&decl_id)
+            .copied()
+            .expect("Address not found for declaration")
+    }
+
+    fn declaration_id(&self, ident: &ast::Identifier) -> DeclarationId {
+        self.semantics
+            .uses
+            .get(&ident.node.id)
+            .copied()
+            .expect("Declaration not found")
+    }
+
+    fn function_locals(&self, func_id: DeclarationId) -> impl Iterator<Item = &Declaration> {
+        self.semantics.declarations.iter().filter(move |&d| {
+            if let DeclarationKind::Local(decl_id) = d.kind {
+                decl_id == func_id
+            } else {
+                false
+            }
+        })
     }
 }
 

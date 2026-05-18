@@ -1,5 +1,4 @@
 use crate::ir;
-use crate::ir::Type;
 use wasm_encoder::{
     CodeSection, ExportKind, ExportSection, Function, FunctionSection, Instruction, Module,
     TypeSection, ValType,
@@ -11,7 +10,7 @@ pub fn emit(module: ir::Module) -> Vec<u8> {
     let mut types = TypeSection::new();
     for ty in &module.types {
         match ty {
-            Type::Function(f) => {
+            ir::Type::Function(f) => {
                 types.ty().function(
                     f.params.iter().map(ir::ValType::encode),
                     f.results.iter().map(ir::ValType::encode),
@@ -25,7 +24,7 @@ pub fn emit(module: ir::Module) -> Vec<u8> {
     let mut codes = CodeSection::new();
     for f in &module.functions {
         functions.function(f.ty);
-        let locals = vec![];
+        let locals = f.locals.iter().map(|ty| (1, ty.encode()));
         let mut bin_function = Function::new(locals);
         for instruction in &f.body {
             bin_function.instruction(&instruction.encode());
@@ -61,6 +60,8 @@ impl ir::Instruction {
     fn encode(&self) -> Instruction<'_> {
         match self {
             ir::Instruction::LocalGet(idx) => Instruction::LocalGet(*idx),
+            ir::Instruction::LocalSet(idx) => Instruction::LocalSet(*idx),
+            ir::Instruction::I64Const(v) => Instruction::I64Const(*v),
             ir::Instruction::I64Add => Instruction::I64Add,
             ir::Instruction::End => Instruction::End,
         }

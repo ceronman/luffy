@@ -67,7 +67,7 @@ pub enum StmtKind {
     Declaration {
         name: Identifier,
         ty: Type,
-        value: Option<Expr>,
+        initializer: Expr,
     },
     Assignment {
         target: Expr,

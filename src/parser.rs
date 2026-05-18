@@ -377,16 +377,16 @@ impl<'src> Parser<'src> {
         let name =
             self.identifier(|t| format!("Expected variable name, found {:?} instead", t.kind))?;
         let ty = self.ty()?;
-        let (value, end_span) = if self.eat(TokenKind::Equal) {
-            let initializer = self.expression()?;
-            let span = initializer.node.span;
-            (Some(initializer), span)
-        } else {
-            (None, ty.node.span)
-        };
+        self.expect(TokenKind::Equal)?;
+        let initializer = self.expression()?;
+
         Ok(Stmt {
-            node: self.node(let_kw.span, end_span),
-            kind: StmtKind::Declaration { name, ty, value },
+            node: self.node(let_kw.span, initializer.node.span),
+            kind: StmtKind::Declaration {
+                name,
+                ty,
+                initializer,
+            },
         })
     }
 

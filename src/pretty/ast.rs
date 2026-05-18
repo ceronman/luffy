@@ -44,13 +44,16 @@ impl PrettyAst {
             StmtKind::Return { expr } => Self::new("Return", vec![Self::expression(expr)]),
             StmtKind::ExprStmt { expr } => Self::expression(expr),
             StmtKind::Block { statements } => Self::new("Block", statements.iter().map(Self::stmt)),
-            StmtKind::Declaration { name, ty, value } => {
+            StmtKind::Declaration {
+                name,
+                ty,
+                initializer: value,
+            } => {
                 let ty = Self::new("Type", vec![Self::ty(ty)]);
-                let mut children = vec![ty];
-                if let Some(value) = value {
-                    children.push(Self::expression(value));
-                }
-                Self::new(format!("VarDeclaration [{}]", name.symbol), children)
+                Self::new(
+                    format!("VarDeclaration [{}]", name.symbol),
+                    vec![ty, Self::expression(value)],
+                )
             }
             StmtKind::Assignment { target, value } => {
                 let target = Self::expression(target);

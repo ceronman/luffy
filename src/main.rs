@@ -11,7 +11,8 @@ pub mod semantic;
 fn main() {
     let code = r#"
     fn f(a Int, b Int) Int {
-        return a + b
+        let c Int = a + 1
+        return c + b
     }
     "#;
 

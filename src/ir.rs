@@ -25,13 +25,16 @@ pub enum ValType {
 
 pub struct Function {
     pub ty: TypeIdx,
+    pub locals: Vec<ValType>,
     pub body: Vec<Instruction>,
 }
 
 pub enum Instruction {
+    I64Const(i64),
     I64Add,
     LocalGet(LocalIdx),
     End,
+    LocalSet(LocalIdx),
 }
 
 pub struct Export {
