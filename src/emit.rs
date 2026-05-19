@@ -63,6 +63,7 @@ impl ir::Instruction {
             ir::Instruction::LocalSet(idx) => Instruction::LocalSet(*idx),
             ir::Instruction::I64Const(v) => Instruction::I64Const(*v),
             ir::Instruction::I64Add => Instruction::I64Add,
+            ir::Instruction::I64Sub => Instruction::I64Sub,
             ir::Instruction::End => Instruction::End,
         }
     }

@@ -1,3 +1,4 @@
+use crate::ast::UnOpKind;
 use crate::error::CompilerError;
 use crate::ir::LocalIdx;
 use crate::semantic::{Declaration, DeclarationId, DeclarationKind, Semantics};
@@ -102,7 +103,13 @@ impl Compiler {
                 let address = self.local_addr(name);
                 ins.push(ir::Instruction::LocalGet(address))
             }
-            ast::ExprKind::Unary { .. } => todo!(),
+            ast::ExprKind::Unary { op, expr } => match &op.kind {
+                UnOpKind::Neg => {
+                    ins.push(ir::Instruction::I64Const(0));
+                    self.expr(ins, expr)?;
+                    ins.push(ir::Instruction::I64Sub);
+                }
+            },
             ast::ExprKind::Binary { op, left, right } => match &op.kind {
                 ast::BinOpKind::Add => {
                     self.expr(ins, left)?;

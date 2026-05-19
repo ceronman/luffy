@@ -32,6 +32,7 @@ pub struct Function {
 pub enum Instruction {
     I64Const(i64),
     I64Add,
+    I64Sub,
     LocalGet(LocalIdx),
     End,
     LocalSet(LocalIdx),
