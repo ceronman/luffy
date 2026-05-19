@@ -12,6 +12,7 @@ fn main() {
     let code = r#"
     fn f(a Int, b Int) Int {
         let c Int = a + 1
+        c = a
         return c + b
     }
     "#;

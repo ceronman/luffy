@@ -122,7 +122,13 @@ impl Resolver {
                 self.declare_local(name, func_id)?;
                 self.expr(initializer)?;
             }
-            StmtKind::Assignment { .. } => todo!(),
+            StmtKind::Assignment { target, value } => {
+                self.expr(target)?;
+                if !matches!(target.kind, ExprKind::Variable { .. }) {
+                    return error(target.node.span, "Invalid assignment target");
+                }
+                self.expr(value)?;
+            }
             StmtKind::Return { expr } => {
                 self.expr(expr)?;
             }

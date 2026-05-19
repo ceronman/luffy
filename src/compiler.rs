@@ -77,7 +77,14 @@ impl Compiler {
                 let address = self.local_addr(name);
                 ins.push(ir::Instruction::LocalSet(address));
             }
-            ast::StmtKind::Assignment { .. } => todo!(),
+            ast::StmtKind::Assignment { target, value } => {
+                let ast::ExprKind::Variable { name } = &target.kind else {
+                    panic!("Invalid assignment target");
+                };
+                let adddress = self.local_addr(name);
+                self.expr(ins, value)?;
+                ins.push(ir::Instruction::LocalSet(adddress));
+            }
             ast::StmtKind::Return { expr } => {
                 self.expr(ins, expr)?;
             }
