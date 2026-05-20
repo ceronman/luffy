@@ -110,7 +110,9 @@ impl Resolver {
 
     fn stmt(&mut self, stmt: &Stmt, func_id: DeclarationId) -> Result<()> {
         match &stmt.kind {
-            StmtKind::ExprStmt { .. } => todo!(),
+            StmtKind::ExprStmt { expr } => {
+                self.expr(expr)?
+            },
             StmtKind::Block { statements } => {
                 for stmt in statements {
                     self.stmt(stmt, func_id)?;
