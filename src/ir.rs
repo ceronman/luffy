@@ -36,6 +36,7 @@ pub enum Instruction {
     LocalGet(LocalIdx),
     End,
     LocalSet(LocalIdx),
+    Call(FuncIdx),
 }
 
 pub struct Export {

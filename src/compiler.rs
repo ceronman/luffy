@@ -1,12 +1,11 @@
-use crate::ast::UnOpKind;
 use crate::error::CompilerError;
-use crate::ir::LocalIdx;
 use crate::semantic::{Declaration, DeclarationId, DeclarationKind, Semantics};
-use crate::{ast, ir, semantic};
+use crate::{ast, ir};
 use std::collections::HashMap;
 
 struct Compiler {
-    addresses: HashMap<DeclarationId, LocalIdx>,
+    local_addresses: HashMap<DeclarationId, ir::LocalIdx>,
+    func_addresses: HashMap<DeclarationId, ir::FuncIdx>,
     semantics: Semantics,
 }
 
@@ -104,7 +103,7 @@ impl Compiler {
                 ins.push(ir::Instruction::LocalGet(address))
             }
             ast::ExprKind::Unary { op, expr } => match &op.kind {
-                UnOpKind::Neg => {
+                ast::UnOpKind::Neg => {
                     ins.push(ir::Instruction::I64Const(0));
                     self.expr(ins, expr)?;
                     ins.push(ir::Instruction::I64Sub);
@@ -118,7 +117,16 @@ impl Compiler {
                 }
                 _ => todo!(),
             },
-            ast::ExprKind::Call { .. } => todo!(),
+            ast::ExprKind::Call { callee, args } => {
+                let ast::ExprKind::Variable { name } = &callee.kind else {
+                    panic!("Invalid callee");
+                };
+                let address = self.func_addr(name);
+                for arg in args {
+                    self.expr(ins, arg)?;
+                }
+                ins.push(ir::Instruction::Call(address));
+            }
         }
         Ok(())
     }
@@ -131,27 +139,47 @@ impl Compiler {
     }
 
     fn calculate_addresses(&mut self) {
-        let mut local_indices: HashMap<DeclarationId, LocalIdx> = HashMap::new();
+        let mut local_indices: HashMap<DeclarationId, ir::LocalIdx> = HashMap::new();
+        let mut func_address = 0;
         for decl in &self.semantics.declarations {
-            let address = match decl.kind {
-                DeclarationKind::Local(fn_id) => *local_indices
-                    .entry(fn_id)
-                    .and_modify(|count| *count += 1)
-                    .or_insert(0),
-                _ => continue,
+            match decl.kind {
+                DeclarationKind::Local(fn_id) => {
+                    let address = *local_indices
+                        .entry(fn_id)
+                        .and_modify(|count| *count += 1)
+                        .or_insert(0);
+                    self.local_addresses.insert(decl.id, address);
+                }
+                DeclarationKind::Function => {
+                    self.func_addresses.insert(decl.id, func_address);
+                    func_address += 1;
+                }
             };
-            self.addresses.insert(decl.id, address);
         }
     }
 
-    fn local_addr(&self, identifier: &ast::Identifier) -> LocalIdx {
+    fn local_addr(&self, identifier: &ast::Identifier) -> ir::LocalIdx {
         let decl_id = self
             .semantics
             .uses
             .get(&identifier.node.id)
             .copied()
             .expect("Undeclared identifier");
-        self.addresses
+        self.local_addresses
+            .get(&decl_id)
+            .copied()
+            .expect("Address not found for declaration")
+    }
+
+    // TODO: Unify
+    fn func_addr(&self, identifier: &ast::Identifier) -> ir::FuncIdx {
+        let decl_id = self
+            .semantics
+            .uses
+            .get(&identifier.node.id)
+            .copied()
+            .expect("Undeclared function");
+        self.func_addresses
             .get(&decl_id)
             .copied()
             .expect("Address not found for declaration")
@@ -186,10 +214,11 @@ impl ast::TypeKind {
     }
 }
 
-pub fn compile(module: &ast::Module, semantics: semantic::Semantics) -> Result<ir::Module> {
+pub fn compile(module: &ast::Module, semantics: Semantics) -> Result<ir::Module> {
     let mut compiler = Compiler {
         semantics,
-        addresses: Default::default(),
+        local_addresses: Default::default(),
+        func_addresses: Default::default(),
     };
     compiler.calculate_addresses();
     compiler.module(module)

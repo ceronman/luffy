@@ -110,9 +110,7 @@ impl Resolver {
 
     fn stmt(&mut self, stmt: &Stmt, func_id: DeclarationId) -> Result<()> {
         match &stmt.kind {
-            StmtKind::ExprStmt { expr } => {
-                self.expr(expr)?
-            },
+            StmtKind::ExprStmt { expr } => self.expr(expr)?,
             StmtKind::Block { statements } => {
                 for stmt in statements {
                     self.stmt(stmt, func_id)?;
@@ -126,7 +124,7 @@ impl Resolver {
             }
             StmtKind::Assignment { target, value } => {
                 self.expr(target)?;
-                if !matches!(target.kind, ExprKind::Variable { .. }) {
+                if !target.is_variable() {
                     return error(target.node.span, "Invalid assignment target");
                 }
                 self.expr(value)?;
@@ -152,7 +150,15 @@ impl Resolver {
                 self.expr(left)?;
                 self.expr(right)?;
             }
-            ExprKind::Call { .. } => todo!(),
+            ExprKind::Call { callee, args } => {
+                self.expr(callee)?;
+                if !callee.is_variable() {
+                    return error(callee.node.span, "Invalid call callee");
+                }
+                for arg in args {
+                    self.expr(arg)?;
+                }
+            }
         }
         Ok(())
     }
@@ -163,6 +169,12 @@ impl Resolver {
 
     fn end_scope(&mut self) {
         self.scopes.pop_front();
+    }
+}
+
+impl Expr {
+    fn is_variable(&self) -> bool {
+        matches!(self.kind, ExprKind::Variable { .. })
     }
 }
 
