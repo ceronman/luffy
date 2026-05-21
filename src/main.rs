@@ -10,14 +10,15 @@ pub mod semantic;
 
 fn main() {
     let code = r#"
-    fn g(a Int, b Int) Int {
-        return a + b
-    }
     fn f(a Int, b Int) Int {
         let c Int = -a
         c = a + 1
         c = a
         return g(c, b)
+    }
+
+    fn g(a Int, b Int) Int {
+        return a + b
     }
     "#;
 

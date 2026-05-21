@@ -37,7 +37,7 @@ impl PrettyAst {
             ))
         }
         children.push(Self::new("Body", vec![Self::stmt(&function.body)]));
-        Self::new(format!("Function [{}]", &function.name.symbol), children)
+        Self::new(format!("Function [{}]", function.name.symbol), children)
     }
     fn stmt(statement: &Stmt) -> PrettyAst {
         match &statement.kind {

@@ -45,6 +45,11 @@ fn error<T: Debug>(span: Span, message: impl Into<String>) -> crate::parser::Res
 impl Resolver {
     fn module(&mut self, module: &Module) -> Result<()> {
         self.begin_scope();
+
+        for function in &module.items {
+            self.declare(&function.name, DeclarationKind::Function)?;
+        }
+
         for function in &module.items {
             self.function(function)?;
         }
@@ -92,7 +97,7 @@ impl Resolver {
     }
 
     fn function(&mut self, f: &Function) -> Result<()> {
-        let decl_id = self.declare(&f.name, DeclarationKind::Function)?;
+        let decl_id = self.lookup(&f.name)?;
         self.semantics.uses.insert(f.name.node.id, decl_id);
 
         self.begin_scope();
