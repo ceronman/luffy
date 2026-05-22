@@ -64,6 +64,9 @@ impl ir::Instruction {
             ir::Instruction::I64Const(v) => Instruction::I64Const(*v),
             ir::Instruction::I64Add => Instruction::I64Add,
             ir::Instruction::I64Sub => Instruction::I64Sub,
+            ir::Instruction::I64Mul => Instruction::I64Mul,
+            ir::Instruction::I64DivS => Instruction::I64DivS,
+            ir::Instruction::I64RemS => Instruction::I64RemS,
             ir::Instruction::End => Instruction::End,
             ir::Instruction::Call(func_idx) => Instruction::Call(*func_idx),
         }

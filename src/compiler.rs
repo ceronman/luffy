@@ -109,14 +109,18 @@ impl Compiler {
                     ins.push(ir::Instruction::I64Sub);
                 }
             },
-            ast::ExprKind::Binary { op, left, right } => match &op.kind {
-                ast::BinOpKind::Add => {
-                    self.expr(ins, left)?;
-                    self.expr(ins, right)?;
-                    ins.push(ir::Instruction::I64Add);
+            ast::ExprKind::Binary { op, left, right } => {
+                self.expr(ins, left)?;
+                self.expr(ins, right)?;
+                match &op.kind {
+                    ast::BinOpKind::Add => ins.push(ir::Instruction::I64Add),
+                    ast::BinOpKind::Sub => ins.push(ir::Instruction::I64Sub),
+                    ast::BinOpKind::Mul => ins.push(ir::Instruction::I64Mul),
+                    ast::BinOpKind::Div => ins.push(ir::Instruction::I64DivS),
+                    ast::BinOpKind::Mod => ins.push(ir::Instruction::I64RemS),
+                    _ => todo!(),
                 }
-                _ => todo!(),
-            },
+            }
             ast::ExprKind::Call { callee, args } => {
                 let ast::ExprKind::Variable { name } = &callee.kind else {
                     panic!("Invalid callee");

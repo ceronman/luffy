@@ -18,7 +18,7 @@ fn main() {
     }
 
     fn g(a Int, b Int) Int {
-        return a + b
+        return (a + b) + (b - b) + (b / b) + (a % 2)
     }
     "#;
 
