@@ -1,15 +1,18 @@
 use crate::ast::{
-    Expr, ExprKind, Function, Identifier, Module, NodeId, Param, Stmt, StmtKind, Symbol,
+    Expr, ExprKind, Function, Identifier, LiteralKind, Module, NodeId, Param, Stmt, StmtKind,
+    Symbol, TypeKind, TypeRef,
 };
 use crate::error::{CompilerError, ErrorKind};
 use crate::lexer::Span;
 use std::collections::{HashMap, VecDeque};
 use std::fmt::Debug;
+use std::rc::Rc;
 
-pub type DeclarationId = u32;
+pub type DeclarationId = usize;
 
 pub struct Declaration {
     pub id: DeclarationId,
+    pub ty: Type,
     pub kind: DeclarationKind,
 }
 
@@ -18,8 +21,18 @@ pub enum DeclarationKind {
     Function,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Type {
+    Unit,
+    Int,
+    Float,
+    Bool,
+    Function { params: Rc<[Type]>, ret: Rc<Type> },
+}
+
 #[derive(Default)]
 pub struct Semantics {
+    pub expr_types: HashMap<NodeId, Type>,
     pub declarations: Vec<Declaration>,
     pub uses: HashMap<NodeId, DeclarationId>,
 }
@@ -47,7 +60,17 @@ impl Resolver {
         self.begin_scope();
 
         for function in &module.items {
-            self.declare(&function.name, DeclarationKind::Function)?;
+            let params: Vec<Type> = function.params.iter().map(|p| p.ty.lower()).collect();
+            let ret = function
+                .return_ty
+                .as_ref()
+                .map(|t| t.lower())
+                .unwrap_or(Type::Unit);
+            let ty = Type::Function {
+                params: Rc::from(params),
+                ret: Rc::from(ret),
+            };
+            self.declare(&function.name, ty, DeclarationKind::Function)?;
         }
 
         for function in &module.items {
@@ -57,7 +80,12 @@ impl Resolver {
         Ok(())
     }
 
-    fn declare(&mut self, ident: &Identifier, kind: DeclarationKind) -> Result<DeclarationId> {
+    fn declare(
+        &mut self,
+        ident: &Identifier,
+        ty: Type,
+        kind: DeclarationKind,
+    ) -> Result<DeclarationId> {
         let scope = self.scopes.front_mut().expect("Declaration without scope");
         let name = ident.symbol.clone();
 
@@ -68,8 +96,12 @@ impl Resolver {
             );
         }
 
-        let decl_id = self.semantics.declarations.len() as u32;
-        let decl = Declaration { id: decl_id, kind };
+        let decl_id = self.semantics.declarations.len();
+        let decl = Declaration {
+            id: decl_id,
+            ty,
+            kind,
+        };
         self.semantics.declarations.push(decl);
 
         scope.insert(name, decl_id);
@@ -77,8 +109,13 @@ impl Resolver {
         Ok(decl_id)
     }
 
-    fn declare_local(&mut self, ident: &Identifier, func_id: DeclarationId) -> Result<()> {
-        let decl_id = self.declare(ident, DeclarationKind::Local(func_id))?;
+    fn declare_local(
+        &mut self,
+        ident: &Identifier,
+        ty: Type,
+        func_id: DeclarationId,
+    ) -> Result<()> {
+        let decl_id = self.declare(ident, ty, DeclarationKind::Local(func_id))?;
         self.semantics.uses.insert(ident.node.id, decl_id);
         Ok(())
     }
@@ -102,8 +139,8 @@ impl Resolver {
 
         self.begin_scope();
 
-        for Param { name, .. } in f.params.iter() {
-            self.declare_local(name, decl_id)?
+        for Param { name, ty, .. } in f.params.iter() {
+            self.declare_local(name, ty.lower(), decl_id)?
         }
 
         self.stmt(&f.body, decl_id)?;
@@ -115,16 +152,20 @@ impl Resolver {
 
     fn stmt(&mut self, stmt: &Stmt, func_id: DeclarationId) -> Result<()> {
         match &stmt.kind {
-            StmtKind::ExprStmt { expr } => self.expr(expr)?,
+            StmtKind::ExprStmt { expr } => {
+                self.expr(expr)?;
+            }
             StmtKind::Block { statements } => {
                 for stmt in statements {
                     self.stmt(stmt, func_id)?;
                 }
             }
             StmtKind::Declaration {
-                name, initializer, ..
+                name,
+                ty,
+                initializer,
             } => {
-                self.declare_local(name, func_id)?;
+                self.declare_local(name, ty.lower(), func_id)?;
                 self.expr(initializer)?;
             }
             StmtKind::Assignment { target, value } => {
@@ -141,31 +182,44 @@ impl Resolver {
         Ok(())
     }
 
-    fn expr(&mut self, expr: &Expr) -> Result<()> {
-        match &expr.kind {
-            ExprKind::Literal { .. } => {}
+    fn expr(&mut self, expr: &Expr) -> Result<Type> {
+        let ty = match &expr.kind {
+            ExprKind::Literal { kind } => match kind {
+                LiteralKind::Int(_) => Type::Int,
+                LiteralKind::Float(_) => Type::Float,
+                LiteralKind::Bool(_) => Type::Bool,
+            },
             ExprKind::Variable { name } => {
                 let decl_id = self.lookup(name)?;
                 self.semantics.uses.insert(name.node.id, decl_id);
+                let decl = &self.semantics.declarations[decl_id];
+                decl.ty.clone()
             }
-            ExprKind::Unary { expr, .. } => {
-                self.expr(expr)?;
-            }
+            ExprKind::Unary { expr, .. } => self.expr(expr)?,
             ExprKind::Binary { left, right, .. } => {
-                self.expr(left)?;
-                self.expr(right)?;
+                let left_ty = self.expr(left)?;
+                let right_ty = self.expr(right)?;
+                if left_ty != right_ty {
+                    return error(expr.node.span, "Type mismatch in binary expression");
+                }
+                left_ty
             }
             ExprKind::Call { callee, args } => {
                 self.expr(callee)?;
-                if !callee.is_variable() {
+                let ExprKind::Variable { name } = &callee.kind else {
                     return error(callee.node.span, "Invalid call callee");
-                }
+                };
                 for arg in args {
+                    // TODO: typecheck args
                     self.expr(arg)?;
                 }
+                let decl_id = self.lookup(name)?;
+                self.semantics.uses.insert(name.node.id, decl_id);
+                let decl = &self.semantics.declarations[decl_id];
+                decl.ty.clone()
             }
-        }
-        Ok(())
+        };
+        Ok(ty)
     }
 
     fn begin_scope(&mut self) {
@@ -174,6 +228,16 @@ impl Resolver {
 
     fn end_scope(&mut self) {
         self.scopes.pop_front();
+    }
+}
+
+impl TypeRef {
+    fn lower(&self) -> Type {
+        match &self.kind {
+            TypeKind::Int => Type::Int,
+            TypeKind::Float => Type::Float,
+            TypeKind::Bool => Type::Bool,
+        }
     }
 }
 

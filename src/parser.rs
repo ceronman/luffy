@@ -1,7 +1,7 @@
 use crate::ast::StmtKind::{Assignment, ExprStmt};
 use crate::ast::{
     BinOp, BinOpKind, Expr, ExprKind, Function, Identifier, LiteralKind, Module, Node, Param, Stmt,
-    StmtKind, Type, TypeKind, UnOp, UnOpKind,
+    StmtKind, TypeKind, TypeRef, UnOp, UnOpKind,
 };
 use crate::error::{CompilerError, ErrorKind};
 use crate::lexer::{Lexer, Span, Token, TokenKind};
@@ -77,7 +77,7 @@ impl<'src> Parser<'src> {
         }
         self.expect(TokenKind::RParen)?;
         let return_ty = if self.current.kind == TokenKind::Identifier {
-            Some(self.ty()?)
+            Some(self.type_ref()?)
         } else {
             None
         };
@@ -100,7 +100,7 @@ impl<'src> Parser<'src> {
         })
     }
 
-    fn ty(&mut self) -> Result<Type> {
+    fn type_ref(&mut self) -> Result<TypeRef> {
         let name = self.identifier(|t| format!("Expected type, found {:?} instead", t.kind))?;
         let kind = match name.symbol.as_str() {
             "Int" => TypeKind::Int,
@@ -108,7 +108,7 @@ impl<'src> Parser<'src> {
             "Bool" => TypeKind::Bool,
             _ => return error(name.node.span, "Unknown type"),
         };
-        Ok(Type {
+        Ok(TypeRef {
             node: self.node(name.node.span, name.node.span),
             kind,
         })
@@ -117,7 +117,7 @@ impl<'src> Parser<'src> {
     fn param(&mut self) -> Result<Param> {
         let name =
             self.identifier(|t| format!("Expected param name, found {:?} instead", t.kind))?;
-        let ty = self.ty()?;
+        let ty = self.type_ref()?;
         Ok(Param {
             node: self.node(name.node.span, ty.node.span),
             name,
@@ -376,7 +376,7 @@ impl<'src> Parser<'src> {
         let let_kw = self.expect(TokenKind::Let)?;
         let name =
             self.identifier(|t| format!("Expected variable name, found {:?} instead", t.kind))?;
-        let ty = self.ty()?;
+        let ty = self.type_ref()?;
         self.expect(TokenKind::Equal)?;
         let initializer = self.expression()?;
 

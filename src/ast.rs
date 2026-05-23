@@ -25,13 +25,13 @@ pub struct Module {
 pub struct Function {
     pub node: Node,
     pub name: Identifier,
-    pub return_ty: Option<Type>,
+    pub return_ty: Option<TypeRef>,
     pub params: Vec<Param>,
     pub body: Stmt,
 }
 
 #[derive(Debug)]
-pub struct Type {
+pub struct TypeRef {
     pub node: Node,
     pub kind: TypeKind,
 }
@@ -47,7 +47,7 @@ pub enum TypeKind {
 pub struct Param {
     pub node: Node,
     pub name: Identifier,
-    pub ty: Type,
+    pub ty: TypeRef,
 }
 
 #[derive(Debug)]
@@ -66,7 +66,7 @@ pub enum StmtKind {
     },
     Declaration {
         name: Identifier,
-        ty: Type,
+        ty: TypeRef,
         initializer: Expr,
     },
     Assignment {
