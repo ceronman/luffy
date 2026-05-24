@@ -14,6 +14,8 @@ fn main() {
         let c Int = -a
         c = a + 1
         c = a
+        let x Int = 0
+        let y Float = 1.0
         return g(c, b)
     }
 

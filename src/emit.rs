@@ -67,8 +67,14 @@ impl ir::Instruction {
             ir::Instruction::I64Mul => Instruction::I64Mul,
             ir::Instruction::I64DivS => Instruction::I64DivS,
             ir::Instruction::I64RemS => Instruction::I64RemS,
-            ir::Instruction::End => Instruction::End,
+
+            ir::Instruction::F64Const(v) => Instruction::F64Const((*v).into()),
+            ir::Instruction::F64Add => Instruction::F64Add,
+            ir::Instruction::F64Sub => Instruction::F64Sub,
+            ir::Instruction::F64Mul => Instruction::F64Mul,
+            ir::Instruction::F64Div => Instruction::F64Div,
             ir::Instruction::Call(func_idx) => Instruction::Call(*func_idx),
+            ir::Instruction::End => Instruction::End,
         }
     }
 }

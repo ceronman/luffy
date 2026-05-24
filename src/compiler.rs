@@ -1,5 +1,5 @@
 use crate::error::CompilerError;
-use crate::semantic::{Declaration, DeclarationId, DeclarationKind, Semantics};
+use crate::semantic::{Declaration, DeclarationId, DeclarationKind, Semantics, Type};
 use crate::{ast, ir};
 use std::collections::HashMap;
 
@@ -34,15 +34,18 @@ impl Compiler {
     }
 
     fn func_type(&self, function: &ast::Function) -> Result<ir::FuncType> {
-        let params = function
-            .params
+        let Type::Function { params, ret } = self.declaration_type(&function.name) else {
+            panic!("Function is not of type function")
+        };
+
+        let params = params
             .iter()
-            .map(|param| param.ty.kind.lower())
+            .map(|p| p.lower())
             .collect::<Result<Vec<_>>>()?;
-        let results = if let Some(ty) = &function.return_ty {
-            vec![ty.kind.lower()?]
-        } else {
+        let results = if let Type::Unit = ret.as_ref() {
             vec![]
+        } else {
+            vec![ret.lower()?]
         };
         Ok(ir::FuncType { params, results })
     }
@@ -52,8 +55,8 @@ impl Compiler {
         let locals = self
             .function_locals(func_id)
             .skip(function.params.len())
-            .map(|_d| ir::ValType::I64)
-            .collect::<Vec<ir::ValType>>();
+            .map(|d| d.ty.lower())
+            .collect::<Result<Vec<ir::ValType>>>()?;
         let mut body = Vec::new();
         self.stmt(&mut body, &function.body)?;
         body.push(ir::Instruction::End);
@@ -96,6 +99,7 @@ impl Compiler {
         match &expr.kind {
             ast::ExprKind::Literal { kind } => match kind {
                 ast::LiteralKind::Int(value) => ins.push(ir::Instruction::I64Const(*value)),
+                ast::LiteralKind::Float(value) => ins.push(ir::Instruction::F64Const(*value)),
                 _ => todo!(),
             },
             ast::ExprKind::Variable { name } => {
@@ -197,6 +201,12 @@ impl Compiler {
             .expect("Declaration not found")
     }
 
+    fn declaration_type(&self, ident: &ast::Identifier) -> Type {
+        let decl_id = self.declaration_id(ident);
+        let decl = &self.semantics.declarations[decl_id];
+        decl.ty.clone()
+    }
+
     fn function_locals(&self, func_id: DeclarationId) -> impl Iterator<Item = &Declaration> {
         self.semantics.declarations.iter().filter(move |&d| {
             if let DeclarationKind::Local(decl_id) = d.kind {
@@ -208,13 +218,14 @@ impl Compiler {
     }
 }
 
-impl ast::TypeKind {
+impl Type {
     fn lower(&self) -> Result<ir::ValType> {
-        match self {
-            ast::TypeKind::Int => Ok(ir::ValType::I64),
-            ast::TypeKind::Float => Ok(ir::ValType::F64),
-            ast::TypeKind::Bool => todo!("Implement bool type"),
-        }
+        let ty = match self {
+            Type::Int => ir::ValType::I64,
+            Type::Float => ir::ValType::F64,
+            _ => todo!(),
+        };
+        Ok(ty)
     }
 }
 

@@ -36,10 +36,17 @@ pub enum Instruction {
     I64Mul,
     I64DivS,
     I64RemS,
+
+    F64Const(f64),
+    F64Add,
+    F64Sub,
+    F64Mul,
+    F64Div,
+
     LocalGet(LocalIdx),
-    End,
     LocalSet(LocalIdx),
     Call(FuncIdx),
+    End,
 }
 
 pub struct Export {
