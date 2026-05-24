@@ -1,11 +1,11 @@
 use crate::ast::{
-    Expr, ExprKind, Function, Identifier, LiteralKind, Module, NodeId, Param, Stmt, StmtKind,
-    Symbol, TypeKind, TypeRef,
+    BinOpKind, Expr, ExprKind, Function, Identifier, LiteralKind, Module, NodeId, Param, Stmt,
+    StmtKind, Symbol, TypeKind, TypeRef,
 };
 use crate::error::{CompilerError, ErrorKind};
 use crate::lexer::Span;
 use std::collections::{HashMap, VecDeque};
-use std::fmt::Debug;
+use std::fmt::{Debug, Display, Formatter};
 use std::rc::Rc;
 
 pub type DeclarationId = usize;
@@ -30,6 +30,18 @@ pub enum Type {
     Function { params: Rc<[Type]>, ret: Rc<Type> },
 }
 
+impl Display for Type {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Type::Unit => write!(f, "Unit"),
+            Type::Int => write!(f, "Int"),
+            Type::Float => write!(f, "Float"),
+            Type::Bool => write!(f, "Bool"),
+            Type::Function { .. } => write!(f, "Function"), // TODO: improve
+        }
+    }
+}
+
 #[derive(Default)]
 pub struct Semantics {
     pub expr_types: HashMap<NodeId, Type>,
@@ -47,12 +59,31 @@ struct Resolver {
 
 pub type Result<T> = std::result::Result<T, CompilerError>;
 
-fn error<T: Debug>(span: Span, message: impl Into<String>) -> crate::parser::Result<T> {
+fn resolve_err<T: Debug>(span: Span, message: impl Into<String>) -> crate::parser::Result<T> {
     Err(CompilerError {
         kind: ErrorKind::Resolve,
         msg: message.into(),
         span,
     })
+}
+
+fn type_err<T: Debug>(span: Span, message: impl Into<String>) -> crate::parser::Result<T> {
+    Err(CompilerError {
+        kind: ErrorKind::Type,
+        msg: message.into(),
+        span,
+    })
+}
+
+fn check_ty_match(span: Span, expected: &Type, actual: &Type) -> crate::parser::Result<()> {
+    if actual == expected {
+        Ok(())
+    } else {
+        type_err(
+            span,
+            format!("Type mismatch: expected '{expected}', found '{actual}'"),
+        )
+    }
 }
 
 impl Resolver {
@@ -90,7 +121,7 @@ impl Resolver {
         let name = ident.symbol.clone();
 
         if scope.contains_key(&name) {
-            return error(
+            return resolve_err(
                 ident.node.span,
                 format!("Name '{name}' is already declared in this scope"),
             );
@@ -120,17 +151,25 @@ impl Resolver {
         Ok(())
     }
 
-    fn lookup(&mut self, ident: &Identifier) -> Result<DeclarationId> {
+    fn lookup(&self, ident: &Identifier) -> Result<DeclarationId> {
         let Some(decl_id) = self
             .scopes
             .iter()
             .find_map(|scope| scope.get(&ident.symbol))
             .copied()
         else {
-            return error(ident.node.span, format!("Undeclared '{}'", ident.symbol));
+            return resolve_err(ident.node.span, format!("Undeclared '{}'", ident.symbol));
         };
 
         Ok(decl_id)
+    }
+
+    fn lookup_ty(&self, ident: &Identifier) -> Result<Type> {
+        let decl_id = self.lookup(ident)?;
+        let Some(decl) = self.semantics.declarations.get(decl_id) else {
+            return resolve_err(ident.node.span, format!("Undeclared '{}'", ident.symbol));
+        };
+        Ok(decl.ty.clone())
     }
 
     fn function(&mut self, f: &Function) -> Result<()> {
@@ -165,18 +204,27 @@ impl Resolver {
                 ty,
                 initializer,
             } => {
-                self.declare_local(name, ty.lower(), func_id)?;
-                self.expr(initializer)?;
+                let var_ty = ty.lower();
+                let init_ty = self.expr(initializer)?;
+                check_ty_match(initializer.node.span, &var_ty, &init_ty)?;
+                self.declare_local(name, var_ty, func_id)?;
             }
             StmtKind::Assignment { target, value } => {
                 self.expr(target)?;
-                if !target.is_variable() {
-                    return error(target.node.span, "Invalid assignment target");
-                }
-                self.expr(value)?;
+                let ExprKind::Variable { name } = &target.kind else {
+                    return resolve_err(target.node.span, "Invalid assignment target");
+                };
+                let target_ty = self.lookup_ty(name)?;
+                let expr_ty = self.expr(value)?;
+                check_ty_match(value.node.span, &target_ty, &expr_ty)?;
             }
             StmtKind::Return { expr } => {
-                self.expr(expr)?;
+                let ty = self.expr(expr)?;
+                let function_decl = &self.semantics.declarations[func_id];
+                let Type::Function { ret, .. } = &function_decl.ty else {
+                    return resolve_err(expr.node.span, "Return outside of function");
+                };
+                check_ty_match(expr.node.span, ret, &ty)?;
             }
         }
         Ok(())
@@ -192,31 +240,33 @@ impl Resolver {
             ExprKind::Variable { name } => {
                 let decl_id = self.lookup(name)?;
                 self.semantics.uses.insert(name.node.id, decl_id);
-                let decl = &self.semantics.declarations[decl_id];
-                decl.ty.clone()
+                self.lookup_ty(name)?
             }
             ExprKind::Unary { expr, .. } => self.expr(expr)?,
-            ExprKind::Binary { left, right, .. } => {
+            ExprKind::Binary { op, left, right } => {
                 let left_ty = self.expr(left)?;
                 let right_ty = self.expr(right)?;
-                if left_ty != right_ty {
-                    return error(expr.node.span, "Type mismatch in binary expression");
+                check_ty_match(right.node.span, &left_ty, &right_ty)?;
+                if matches!(op.kind, BinOpKind::Mod) && matches!(left_ty, Type::Float) {
+                    return type_err(
+                        expr.node.span,
+                        format!("Modulo operator is not implemented for {left_ty}"),
+                    );
                 }
                 left_ty
             }
             ExprKind::Call { callee, args } => {
-                self.expr(callee)?;
-                let ExprKind::Variable { name } = &callee.kind else {
-                    return error(callee.node.span, "Invalid call callee");
+                let Type::Function { params, ret } = self.expr(callee)? else {
+                    return type_err(
+                        callee.node.span,
+                        "Invalid function call: callee is not a function",
+                    );
                 };
-                for arg in args {
-                    // TODO: typecheck args
-                    self.expr(arg)?;
+                for (arg, param_ty) in args.iter().zip(params.iter()) {
+                    let arg_ty = self.expr(arg)?;
+                    check_ty_match(arg.node.span, param_ty, &arg_ty)?;
                 }
-                let decl_id = self.lookup(name)?;
-                self.semantics.uses.insert(name.node.id, decl_id);
-                let decl = &self.semantics.declarations[decl_id];
-                decl.ty.clone()
+                (*ret).clone()
             }
         };
         Ok(ty)
@@ -238,12 +288,6 @@ impl TypeRef {
             TypeKind::Float => Type::Float,
             TypeKind::Bool => Type::Bool,
         }
-    }
-}
-
-impl Expr {
-    fn is_variable(&self) -> bool {
-        matches!(self.kind, ExprKind::Variable { .. })
     }
 }
 
