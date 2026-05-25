@@ -1,6 +1,32 @@
 pub mod ast;
 
 use crate::error::CompilerError;
+use crate::lexer::Span;
+use ariadne::{Config, Label, Report, ReportKind, Source};
+
+impl ariadne::Span for Span {
+    type SourceId = ();
+
+    fn source(&self) -> &Self::SourceId {
+        &()
+    }
+    fn start(&self) -> usize {
+        self.start
+    }
+    fn end(&self) -> usize {
+        self.end
+    }
+}
+
+pub fn print_error(src: &str, error: &CompilerError) {
+    Report::build(ReportKind::Error, error.span)
+        .with_config(Config::default().with_compact(false).with_underlines(true))
+        .with_message("Compiler Error")
+        .with_label(Label::new(error.span).with_message(&error.msg))
+        .finish()
+        .eprint(Source::from(src))
+        .unwrap();
+}
 
 pub fn annotate_error(src: &str, error: &CompilerError) -> String {
     let mut result = String::new();

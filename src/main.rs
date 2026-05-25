@@ -16,6 +16,7 @@ fn main() {
         c = a
         let x Int = 0
         let y Float = 1.0
+        x = y
         return g(c, b)
     }
 
@@ -27,8 +28,7 @@ fn main() {
     let module = match parser::parse(code) {
         Ok(module) => module,
         Err(err) => {
-            let annotated = pretty::annotate_error(code, &err);
-            eprintln!("{}", annotated);
+            pretty::print_error(code, &err);
             return;
         }
     };
@@ -39,8 +39,7 @@ fn main() {
     let semantics = match semantic::semantic_analysis(&module) {
         Ok(semantics) => semantics,
         Err(err) => {
-            let annotated = pretty::annotate_error(code, &err);
-            eprintln!("Resolve Error: {}", annotated);
+            pretty::print_error(code, &err);
             return;
         }
     };
