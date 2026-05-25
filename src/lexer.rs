@@ -1,3 +1,7 @@
+#[cfg(test)]
+mod test;
+
+use std::fmt::Display;
 use std::str::Chars;
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
@@ -197,6 +201,7 @@ impl<'src> Lexer<'src> {
     }
 
     fn number(&mut self) -> TokenKind {
+        // TODO: implement floats starting with dot and proper notation.
         while let Some('0'..='9') = self.peek() {
             self.eat();
         }
@@ -258,5 +263,52 @@ impl<'src> Lexer<'src> {
 
     fn peek(&self) -> Option<char> {
         self.chars.clone().next()
+    }
+}
+
+impl Display for TokenKind {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let result = match self {
+            TokenKind::Plus => "+",
+            TokenKind::Minus => "-",
+            TokenKind::Slash => "/",
+            TokenKind::Star => "*",
+            TokenKind::Percent => "%",
+            TokenKind::EqualEqual => "==",
+            TokenKind::BangEqual => "!=",
+            TokenKind::Greater => ">",
+            TokenKind::GreaterEqual => ">=",
+            TokenKind::Less => "<",
+            TokenKind::LessEqual => "<=",
+            TokenKind::Equal => "=",
+            TokenKind::Bang => "!",
+            TokenKind::LParen => "(",
+            TokenKind::RParen => ")",
+            TokenKind::LBrace => "{",
+            TokenKind::RBrace => "}",
+            TokenKind::LBracket => "[",
+            TokenKind::RBracket => "]",
+            TokenKind::True => "true",
+            TokenKind::False => "false",
+            TokenKind::Int => "Int",
+            TokenKind::Float => "Float",
+            TokenKind::Identifier => "Identifier",
+            TokenKind::Str => "Str",
+            TokenKind::Let => "let",
+            TokenKind::If => "if",
+            TokenKind::Else => "else",
+            TokenKind::While => "while",
+            TokenKind::Fn => "fn",
+            TokenKind::Return => "return",
+            TokenKind::LineComment => "LineComment",
+            TokenKind::BlockComment => "BlockComment",
+            TokenKind::Whitespace => "Whitespace",
+            TokenKind::Eol => "EndOfLine",
+            TokenKind::Comma => ",",
+            TokenKind::Dot => ".",
+            TokenKind::Eof => "EndOfFile",
+            TokenKind::Error => "Error",
+        };
+        write!(f, "{result}")
     }
 }
