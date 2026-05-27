@@ -6,7 +6,10 @@ use std::fmt::{Display, Formatter};
 fn operators() {
     assert_snapshot!(
         tokens(" + - / * % == != < > >= <= ! ="),
-        @"[ `+`  `-`  `/`  `*`  `%`  `==`  `!=`  `<`  `>`  `>=`  `<=`  `!`  `=` ]"
+        @"
+    [ `+`  `-`  `/`  `*`  `%`  `==`  `!=`  `<`  `>`  `>=`  `<=` 
+     `!`  `=` ]
+    "
     );
 }
 
@@ -30,7 +33,7 @@ fn keywords() {
 fn identifiers() {
     assert_snapshot!(
         tokens("one two three foo bar"),
-        @"[ `Identifier`  `Identifier`  `Identifier`  `Identifier`  `Identifier` ]"
+        @"[ <Identifier>  <Identifier>  <Identifier>  <Identifier>  <Identifier> ]"
     );
 }
 
@@ -46,7 +49,7 @@ fn punctuations() {
 fn numbers() {
     assert_snapshot!(
         tokens("1 2 1000 -1 1.0 0.1"),
-        @"[ `Int`  `Int`  `Int`  `-`  `Int`  `Float`  `Float` ]"
+        @"[ `<Int>  `<Int>  `<Int>  `-`  `<Int>  <Float>  <Float> ]"
     );
 }
 
@@ -59,9 +62,9 @@ fn trivial() {
             /* This is a /*single*/ comment (no nesting) */
         "#),
         @"
-    [ `EndOfLine`  `Whitespace`  `LineComment`  `EndOfLine`  `Whitespace` 
-     `BlockComment`  `EndOfLine`  `Whitespace`  `BlockComment`  `EndOfLine` 
-     `Whitespace` ]
+    [ <End of line>  <Whitespace>  <Line comment>  <End of line>  <Whitespace> 
+     <Block comment>  <End of line>  <Whitespace>  <Block comment> 
+     <End of line>  <Whitespace> ]
     "
     );
 }
@@ -107,7 +110,7 @@ impl Display for Tokens {
                 writeln!(f)?;
                 width = 0;
             }
-            write!(f, " `{}` ", token.kind)?;
+            write!(f, " {} ", token.kind)?;
             width += s.len() + 4;
         }
         write!(f, "]",)

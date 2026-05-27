@@ -9,21 +9,7 @@ pub mod pretty;
 pub mod semantic;
 
 fn main() {
-    let code = r#"
-    fn f(a Int, b Int) Int {
-        let c Int = -a
-        c = a + 1
-        c = a
-        let x Int = 0
-        let y Float = 1.0
-        x = y
-        return g(c, b)
-    }
-
-    fn g(a Int, b Int) Int {
-        return (a + b) + (b - b) + (b / b) + (a % 2)
-    }
-    "#;
+    let code = r#"foo() {}"#;
 
     let module = match parser::parse(code) {
         Ok(module) => module,

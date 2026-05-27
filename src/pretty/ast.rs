@@ -167,3 +167,9 @@ pub fn expr(expr: &Expr) -> Result<String, std::fmt::Error> {
     PrettyAst::expression(expr).write(&mut buffer, "", 0, &[])?;
     Ok(buffer.trim().to_string())
 }
+
+pub fn stmt(stmt: &Stmt) -> Result<String, std::fmt::Error> {
+    let mut buffer = String::new();
+    PrettyAst::stmt(stmt).write(&mut buffer, "", 0, &[])?;
+    Ok(buffer.trim().to_string())
+}

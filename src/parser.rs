@@ -63,7 +63,7 @@ impl<'src> Parser<'src> {
         // TODO: handle new lines between
         // TODO: Improve error messages across the board
         let name =
-            self.identifier(|t| format!("Expected function name, found {:?} instead", t.kind))?;
+            self.identifier(|t| format!("Expected function name, found {} instead", t.kind))?;
         self.expect(TokenKind::LParen)?;
         let mut params = Vec::new();
         if self.current.kind != TokenKind::RParen {
@@ -102,7 +102,7 @@ impl<'src> Parser<'src> {
     }
 
     fn type_ref(&mut self) -> Result<TypeRef> {
-        let name = self.identifier(|t| format!("Expected type, found {:?} instead", t.kind))?;
+        let name = self.identifier(|t| format!("Expected type, found {} instead", t.kind))?;
         let kind = match name.symbol.as_str() {
             "Int" => TypeKind::Int,
             "Float" => TypeKind::Float,
@@ -116,8 +116,7 @@ impl<'src> Parser<'src> {
     }
 
     fn param(&mut self) -> Result<Param> {
-        let name =
-            self.identifier(|t| format!("Expected param name, found {:?} instead", t.kind))?;
+        let name = self.identifier(|t| format!("Expected param name, found {} instead", t.kind))?;
         let ty = self.type_ref()?;
         Ok(Param {
             node: self.node(name.node.span, ty.node.span),
@@ -146,10 +145,7 @@ impl<'src> Parser<'src> {
             TokenKind::Minus => self.unary_expr()?,
 
             other_kind => {
-                return error(
-                    self.current.span,
-                    format!("Unexpected token {:?}", other_kind),
-                );
+                return error(self.current.span, format!("Unexpected {}", other_kind));
             }
         };
 
@@ -331,10 +327,7 @@ impl<'src> Parser<'src> {
                 }
             }
             _ => {
-                return error(
-                    token.span,
-                    format!("Expected literal, got {:?}", token.kind),
-                );
+                return error(token.span, format!("Expected literal, got {}", token.kind));
             }
         };
         self.advance();
@@ -346,7 +339,7 @@ impl<'src> Parser<'src> {
 
     fn variable(&mut self) -> Result<Expr> {
         let name =
-            self.identifier(|t| format!("Expected variable name, found {:?} instead", t.kind))?;
+            self.identifier(|t| format!("Expected variable name, found {} instead", t.kind))?;
         Ok(Expr {
             node: name.node,
             kind: ExprKind::Variable { name },
@@ -376,7 +369,7 @@ impl<'src> Parser<'src> {
     fn declaration(&mut self) -> Result<Stmt> {
         let let_kw = self.expect(TokenKind::Let)?;
         let name =
-            self.identifier(|t| format!("Expected variable name, found {:?} instead", t.kind))?;
+            self.identifier(|t| format!("Expected variable name, found {} instead", t.kind))?;
         let ty = self.type_ref()?;
         self.expect(TokenKind::Equal)?;
         let initializer = self.expression()?;
@@ -435,7 +428,7 @@ impl<'src> Parser<'src> {
 
     fn expect(&mut self, token_kind: TokenKind) -> Result<Token> {
         self.expect_msg(token_kind, |token| {
-            format!("Expected token {:?}, got {:?}", token_kind, token.kind)
+            format!("Expected {}, got {}", token_kind, token.kind)
         })
     }
 
