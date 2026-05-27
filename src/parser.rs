@@ -10,7 +10,6 @@ use std::fmt::Debug;
 struct Parser<'src> {
     source: &'src str,
     current: Token,
-    // next: Token, // TODO: Remove if not needed
     lexer: Lexer<'src>,
     id_counter: u32,
 }
@@ -31,7 +30,6 @@ impl<'src> Parser<'src> {
         Parser {
             source,
             current: lexer.next_token(),
-            // next: lexer.next_token(),
             lexer,
             id_counter: 0,
         }
