@@ -28,6 +28,18 @@ pub fn print_error(src: &str, error: &CompilerError) {
         .unwrap();
 }
 
+pub fn error(src: &str, error: &CompilerError) -> String {
+    let mut out: Vec<u8> = Vec::new();
+    Report::build(ReportKind::Error, error.span)
+        .with_config(Config::default().with_color(false))
+        .with_message("Compiler Error")
+        .with_label(Label::new(error.span).with_message(&error.msg))
+        .finish()
+        .write(Source::from(src), &mut out)
+        .unwrap();
+    String::from_utf8(out).unwrap()
+}
+
 pub fn annotate_error(src: &str, error: &CompilerError) -> String {
     let mut result = String::new();
     let mut offset = 0;

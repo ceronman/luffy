@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinOpKind, Expr, ExprKind, Function, Identifier, LiteralKind, Module, NodeId, Stmt, StmtKind,
-    TypeKind, TypeRef, UnOpKind,
+    BinOpKind, Expr, ExprKind, Function, Identifier, LiteralKind, Module, Stmt, StmtKind, TypeKind,
+    TypeRef, UnOpKind,
 };
 use std::fmt::Write;
 
@@ -17,7 +17,7 @@ impl PrettyAst {
         }
     }
     fn module(program: &Module) -> Self {
-        Self::new("Program", program.items.iter().map(Self::function))
+        Self::new("Module", program.items.iter().map(Self::function))
     }
     fn function(function: &Function) -> PrettyAst {
         let mut children = Vec::new();
@@ -63,18 +63,15 @@ impl PrettyAst {
         }
     }
     fn expression(expression: &Expr) -> PrettyAst {
-        let node_id = expression.node.id;
         match &expression.kind {
-            ExprKind::Literal { kind } => Self::literal(node_id, kind),
-            ExprKind::Variable { name } => {
-                Self::new(format!("<{node_id}> Var [{}]", name.symbol), vec![])
-            }
+            ExprKind::Literal { kind } => Self::literal(kind),
+            ExprKind::Variable { name } => Self::new(format!("Var [{}]", name.symbol), vec![]),
             ExprKind::Unary { op, expr } => Self::new(
-                format!("<{node_id}> Unary [{}]", Self::unary_op(&op.kind)),
+                format!("Unary [{}]", Self::unary_op(&op.kind)),
                 vec![Self::expression(expr)],
             ),
             ExprKind::Binary { op, left, right } => Self::new(
-                format!("<{node_id}>  [{}]", Self::binary_op(&op.kind)),
+                format!("Binary [{}]", Self::binary_op(&op.kind)),
                 vec![Self::expression(left), Self::expression(right)],
             ),
             ExprKind::Call { callee, args } => {
@@ -89,11 +86,11 @@ impl PrettyAst {
         Self::new(&identifier.symbol, vec![])
     }
 
-    fn literal(node_id: NodeId, literal: &LiteralKind) -> PrettyAst {
+    fn literal(literal: &LiteralKind) -> PrettyAst {
         match literal {
-            LiteralKind::Int(v) => Self::new(format!("<{node_id}> Int[{}]", *v), vec![]),
-            LiteralKind::Float(v) => Self::new(format!("<{node_id}> Float[{}]", *v), vec![]),
-            LiteralKind::Bool(v) => Self::new(format!("<{node_id}> Bool[{}]", *v), vec![]),
+            LiteralKind::Int(v) => Self::new(format!("Int[{}]", *v), vec![]),
+            LiteralKind::Float(v) => Self::new(format!("Float[{}]", *v), vec![]),
+            LiteralKind::Bool(v) => Self::new(format!("Bool[{}]", *v), vec![]),
         }
     }
 
@@ -118,7 +115,7 @@ impl PrettyAst {
             if i < self.children.len() - 1 {
                 child.write(stream, "├── ", level + 1, &[pipes, &[level + 1]].concat())?;
             } else {
-                child.write(stream, "╰── ", level + 1, pipes)?;
+                child.write(stream, "└── ", level + 1, pipes)?;
             }
         }
         Ok(())
@@ -126,7 +123,7 @@ impl PrettyAst {
 
     fn make_indent(level: usize, pipes: &[usize]) -> String {
         let mut indent = String::new();
-        for l in 0..level {
+        for l in 1..level {
             if pipes.contains(&l) {
                 indent.push_str("│   ");
             } else {
@@ -159,8 +156,14 @@ impl PrettyAst {
     }
 }
 
-pub fn print(module: &Module) -> Result<String, std::fmt::Error> {
+pub fn module(module: &Module) -> Result<String, std::fmt::Error> {
     let mut buffer = String::new();
     PrettyAst::module(module).write(&mut buffer, "", 0, &[])?;
+    Ok(buffer.trim().to_string())
+}
+
+pub fn expr(expr: &Expr) -> Result<String, std::fmt::Error> {
+    let mut buffer = String::new();
+    PrettyAst::expression(expr).write(&mut buffer, "", 0, &[])?;
     Ok(buffer.trim().to_string())
 }

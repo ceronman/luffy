@@ -33,7 +33,7 @@ fn main() {
         }
     };
 
-    let pretty = pretty::ast::print(&module).expect("Failed to pretty-print AST");
+    let pretty = pretty::ast::module(&module).expect("Failed to pretty-print AST");
     println!("{pretty}");
 
     let semantics = match semantic::semantic_analysis(&module) {

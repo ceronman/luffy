@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod test;
+
 use crate::ast::StmtKind::{Assignment, ExprStmt};
 use crate::ast::{
     BinOp, BinOpKind, Expr, ExprKind, Function, Identifier, LiteralKind, Module, Node, Param, Stmt,
