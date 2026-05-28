@@ -5,7 +5,7 @@ use insta::assert_snapshot;
 fn parse_module(src: &str) -> String {
     match parser::parse(src) {
         Ok(m) => pretty::ast::module(&m).unwrap(),
-        Err(e) => pretty::error(src, &e),
+        Err(e) => pretty::annotate_error_single(src, &e),
     }
 }
 
@@ -21,7 +21,7 @@ fn parse_expr(expr: &str) -> String {
             };
             pretty::ast::expr(e).unwrap()
         }
-        Err(e) => pretty::error(&module, &e),
+        Err(e) => pretty::annotate_error_single(&module, &e),
     }
 }
 
@@ -34,21 +34,6 @@ fn parse_stmt(stmt_src: &str) -> String {
             };
             pretty::ast::stmt(&statements[0]).unwrap()
         }
-        Err(e) => pretty::error(&module, &e),
-    }
-}
-
-fn parse_error(src: &str) -> String {
-    match parser::parse(src) {
-        Ok(_) => "No error".to_string(),
-        Err(e) => pretty::annotate_error_single(src, &e),
-    }
-}
-
-fn expr_error(expr: &str) -> String {
-    let module = format!("fn foo() {{\n{expr}\n}}");
-    match parser::parse(&module) {
-        Ok(_) => "No error".to_string(),
         Err(e) => pretty::annotate_error_single(&module, &e),
     }
 }
@@ -512,7 +497,7 @@ fn multiple_functions_in_module() {
 
 #[test]
 fn error_missing_fn_keyword() {
-    assert_snapshot!(parse_error("foo() {}"), @"
+    assert_snapshot!(parse_module("foo() {}"), @"
     foo() {}
     ^^^ ─── Expected `fn`, got <Identifier>
     ");
@@ -520,7 +505,7 @@ fn error_missing_fn_keyword() {
 
 #[test]
 fn error_missing_function_name() {
-    assert_snapshot!(parse_error("fn () {}"), @"
+    assert_snapshot!(parse_module("fn () {}"), @"
     fn () {}
        ^ ─── Expected function name, found `(` instead
     ");
@@ -528,7 +513,7 @@ fn error_missing_function_name() {
 
 #[test]
 fn error_unknown_type_in_param() {
-    assert_snapshot!(parse_error("fn f(x Unknown) {}"), @"
+    assert_snapshot!(parse_module("fn f(x Unknown) {}"), @"
     fn f(x Unknown) {}
            ^^^^^^^ ─── Unknown type
     ");
@@ -536,7 +521,7 @@ fn error_unknown_type_in_param() {
 
 #[test]
 fn error_unknown_type_as_return_type() {
-    assert_snapshot!(parse_error("fn f() Unknown {}"), @"
+    assert_snapshot!(parse_module("fn f() Unknown {}"), @"
     fn f() Unknown {}
            ^^^^^^^ ─── Unknown type
     ");
@@ -545,7 +530,7 @@ fn error_unknown_type_as_return_type() {
 #[test]
 fn error_unexpected_token_in_expression() {
     // `@` is not a valid token, so it produces an Error token kind
-    assert_snapshot!(expr_error("@"), @"
+    assert_snapshot!(parse_expr("@"), @"
     @
     ^ ─── Unexpected <Error>
     ");
@@ -555,7 +540,7 @@ fn error_unexpected_token_in_expression() {
 fn error_unclosed_call_parenthesis() {
     // The wrapper adds a newline after the expression, so the parser
     // hits an Eol token rather than Eof when the closing paren is absent.
-    assert_snapshot!(expr_error("foo(1, 2"), @"
+    assert_snapshot!(parse_expr("foo(1, 2"), @"
     foo(1, 2
             ^ ─── Expected `)`, got <End of line>
     ");
@@ -563,7 +548,7 @@ fn error_unclosed_call_parenthesis() {
 
 #[test]
 fn error_unclosed_grouping_parenthesis() {
-    assert_snapshot!(expr_error("(1 + 2"), @"
+    assert_snapshot!(parse_expr("(1 + 2"), @"
     (1 + 2
           ^ ─── Expected `)`, got <End of line>
     ");
