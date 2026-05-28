@@ -21,6 +21,7 @@ pub struct FuncType {
 pub enum ValType {
     I64,
     F64,
+    I32,
 }
 
 pub struct Function {
@@ -30,6 +31,8 @@ pub struct Function {
 }
 
 pub enum Instruction {
+    I32Const(i32),
+
     I64Const(i64),
     I64Add,
     I64Sub,

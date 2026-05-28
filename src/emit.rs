@@ -52,6 +52,7 @@ impl ir::ValType {
         match self {
             ir::ValType::I64 => ValType::I64,
             ir::ValType::F64 => ValType::F64,
+            ir::ValType::I32 => ValType::I32,
         }
     }
 }
@@ -61,6 +62,8 @@ impl ir::Instruction {
         match self {
             ir::Instruction::LocalGet(idx) => Instruction::LocalGet(*idx),
             ir::Instruction::LocalSet(idx) => Instruction::LocalSet(*idx),
+            ir::Instruction::I32Const(v) => Instruction::I32Const(*v),
+
             ir::Instruction::I64Const(v) => Instruction::I64Const(*v),
             ir::Instruction::I64Add => Instruction::I64Add,
             ir::Instruction::I64Sub => Instruction::I64Sub,

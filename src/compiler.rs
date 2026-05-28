@@ -100,7 +100,7 @@ impl Compiler {
             ast::ExprKind::Literal { kind } => match kind {
                 ast::LiteralKind::Int(value) => ins.push(ir::Instruction::I64Const(*value)),
                 ast::LiteralKind::Float(value) => ins.push(ir::Instruction::F64Const(*value)),
-                _ => todo!(),
+                ast::LiteralKind::Bool(value) => ins.push(ir::Instruction::I32Const(*value as i32)),
             },
             ast::ExprKind::Variable { name } => {
                 let address = self.local_addr(name);
@@ -223,6 +223,7 @@ impl Type {
         let ty = match self {
             Type::Int => ir::ValType::I64,
             Type::Float => ir::ValType::F64,
+            Type::Bool => ir::ValType::I32,
             _ => todo!(),
         };
         Ok(ty)
