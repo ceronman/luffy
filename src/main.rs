@@ -14,7 +14,7 @@ fn main() {
     let module = match parser::parse(code) {
         Ok(module) => module,
         Err(err) => {
-            pretty::print_error(code, &err);
+            pretty::annotate_error(code, &err);
             return;
         }
     };
@@ -25,7 +25,7 @@ fn main() {
     let semantics = match semantic::semantic_analysis(&module) {
         Ok(semantics) => semantics,
         Err(err) => {
-            pretty::print_error(code, &err);
+            pretty::annotate_error(code, &err);
             return;
         }
     };

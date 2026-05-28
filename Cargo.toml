@@ -4,7 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-ariadne = "0.6.0"
 wasm-encoder = "0.250.0"
 wasmprinter = "0.250.0"
 wasmtime = "45.0.0"
