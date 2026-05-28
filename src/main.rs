@@ -9,12 +9,16 @@ pub mod pretty;
 pub mod semantic;
 
 fn main() {
-    let code = r#"foo() {}"#;
+    let code = r#"
+        fn foo() {
+            let x Bool = true
+        }
+    "#;
 
     let module = match parser::parse(code) {
         Ok(module) => module,
         Err(err) => {
-            pretty::annotate_error(code, &err);
+            eprintln!("Error:\n{}", pretty::annotate_error(code, &err));
             return;
         }
     };
@@ -25,7 +29,7 @@ fn main() {
     let semantics = match semantic::semantic_analysis(&module) {
         Ok(semantics) => semantics,
         Err(err) => {
-            pretty::annotate_error(code, &err);
+            eprintln!("Error:\n{}", pretty::annotate_error(code, &err));
             return;
         }
     };
@@ -33,8 +37,7 @@ fn main() {
     let module = match compiler::compile(&module, semantics) {
         Ok(module) => module,
         Err(err) => {
-            let annotated = pretty::annotate_error(code, &err);
-            eprintln!("Compilation Error: {}", annotated);
+            eprintln!("Error:\n{}", pretty::annotate_error(code, &err));
             return;
         }
     };
