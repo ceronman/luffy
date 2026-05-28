@@ -45,6 +45,7 @@ pub enum Instruction {
     F64Sub,
     F64Mul,
     F64Div,
+    F64Neg,
 
     LocalGet(LocalIdx),
     LocalSet(LocalIdx),

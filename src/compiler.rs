@@ -106,23 +106,38 @@ impl Compiler {
                 let address = self.local_addr(name);
                 ins.push(ir::Instruction::LocalGet(address))
             }
-            ast::ExprKind::Unary { op, expr } => match &op.kind {
-                ast::UnOpKind::Neg => {
-                    ins.push(ir::Instruction::I64Const(0));
-                    self.expr(ins, expr)?;
-                    ins.push(ir::Instruction::I64Sub);
+            ast::ExprKind::Unary { op, expr } => {
+                let ty = self.node_type(expr.node);
+                match (&op.kind, ty) {
+                    (ast::UnOpKind::Neg, Type::Int) => {
+                        ins.push(ir::Instruction::I64Const(0));
+                        self.expr(ins, expr)?;
+                        ins.push(ir::Instruction::I64Sub);
+                    }
+                    (ast::UnOpKind::Neg, Type::Float) => {
+                        self.expr(ins, expr)?;
+                        ins.push(ir::Instruction::F64Neg);
+                    }
+                    _ => panic!("Unsupported unary operation"),
                 }
-            },
+            }
             ast::ExprKind::Binary { op, left, right } => {
                 self.expr(ins, left)?;
                 self.expr(ins, right)?;
-                match &op.kind {
-                    ast::BinOpKind::Add => ins.push(ir::Instruction::I64Add),
-                    ast::BinOpKind::Sub => ins.push(ir::Instruction::I64Sub),
-                    ast::BinOpKind::Mul => ins.push(ir::Instruction::I64Mul),
-                    ast::BinOpKind::Div => ins.push(ir::Instruction::I64DivS),
-                    ast::BinOpKind::Mod => ins.push(ir::Instruction::I64RemS),
-                    _ => todo!(),
+                let ty = self.node_type(left.node);
+                match (&op.kind, ty) {
+                    (ast::BinOpKind::Add, Type::Int) => ins.push(ir::Instruction::I64Add),
+                    (ast::BinOpKind::Sub, Type::Int) => ins.push(ir::Instruction::I64Sub),
+                    (ast::BinOpKind::Mul, Type::Int) => ins.push(ir::Instruction::I64Mul),
+                    (ast::BinOpKind::Div, Type::Int) => ins.push(ir::Instruction::I64DivS),
+                    (ast::BinOpKind::Mod, Type::Int) => ins.push(ir::Instruction::I64RemS),
+
+                    (ast::BinOpKind::Add, Type::Float) => ins.push(ir::Instruction::F64Add),
+                    (ast::BinOpKind::Sub, Type::Float) => ins.push(ir::Instruction::F64Sub),
+                    (ast::BinOpKind::Mul, Type::Float) => ins.push(ir::Instruction::F64Mul),
+                    (ast::BinOpKind::Div, Type::Float) => ins.push(ir::Instruction::F64Div),
+
+                    _ => panic!("Unsupported binary operation"),
                 }
             }
             ast::ExprKind::Call { callee, args } => {
@@ -205,6 +220,14 @@ impl Compiler {
         let decl_id = self.declaration_id(ident);
         let decl = &self.semantics.declarations[decl_id];
         decl.ty.clone()
+    }
+
+    fn node_type(&self, node: ast::Node) -> Type {
+        self.semantics
+            .expr_types
+            .get(&node.id)
+            .cloned()
+            .expect("Unknown type of node")
     }
 
     fn function_locals(&self, func_id: DeclarationId) -> impl Iterator<Item = &Declaration> {

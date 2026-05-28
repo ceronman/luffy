@@ -76,6 +76,8 @@ impl ir::Instruction {
             ir::Instruction::F64Sub => Instruction::F64Sub,
             ir::Instruction::F64Mul => Instruction::F64Mul,
             ir::Instruction::F64Div => Instruction::F64Div,
+            ir::Instruction::F64Neg => Instruction::F64Neg,
+
             ir::Instruction::Call(func_idx) => Instruction::Call(*func_idx),
             ir::Instruction::End => Instruction::End,
         }

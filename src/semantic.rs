@@ -269,6 +269,7 @@ impl Resolver {
                 (*ret).clone()
             }
         };
+        self.semantics.expr_types.insert(expr.node.id, ty.clone());
         Ok(ty)
     }
 
