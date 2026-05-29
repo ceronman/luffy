@@ -137,6 +137,20 @@ impl Compiler {
                     (ast::BinOpKind::Mul, Type::Float) => ins.push(ir::Instruction::F64Mul),
                     (ast::BinOpKind::Div, Type::Float) => ins.push(ir::Instruction::F64Div),
 
+                    (ast::BinOpKind::Eq, Type::Int) => ins.push(ir::Instruction::I64Eq),
+                    (ast::BinOpKind::Ne, Type::Int) => ins.push(ir::Instruction::I64Ne),
+                    (ast::BinOpKind::Ge, Type::Int) => ins.push(ir::Instruction::I64GeS),
+                    (ast::BinOpKind::Gt, Type::Int) => ins.push(ir::Instruction::I64GtS),
+                    (ast::BinOpKind::Le, Type::Int) => ins.push(ir::Instruction::I64LeS),
+                    (ast::BinOpKind::Lt, Type::Int) => ins.push(ir::Instruction::I64LtS),
+
+                    (ast::BinOpKind::Eq, Type::Float) => ins.push(ir::Instruction::F64Eq),
+                    (ast::BinOpKind::Ne, Type::Float) => ins.push(ir::Instruction::F64Ne),
+                    (ast::BinOpKind::Ge, Type::Float) => ins.push(ir::Instruction::F64Ge),
+                    (ast::BinOpKind::Gt, Type::Float) => ins.push(ir::Instruction::F64Gt),
+                    (ast::BinOpKind::Le, Type::Float) => ins.push(ir::Instruction::F64Le),
+                    (ast::BinOpKind::Lt, Type::Float) => ins.push(ir::Instruction::F64Lt),
+
                     _ => panic!("Unsupported binary operation"),
                 }
             }

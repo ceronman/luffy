@@ -30,6 +30,15 @@ pub enum Type {
     Function { params: Rc<[Type]>, ret: Rc<Type> },
 }
 
+impl Type {
+    fn is_numeric(&self) -> bool {
+        matches!(self, Type::Int | Type::Float)
+    }
+    fn is_int(&self) -> bool {
+        matches!(self, Type::Int)
+    }
+}
+
 impl Display for Type {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
@@ -247,13 +256,39 @@ impl Resolver {
                 let left_ty = self.expr(left)?;
                 let right_ty = self.expr(right)?;
                 check_ty_match(right.node.span, &left_ty, &right_ty)?;
-                if matches!(op.kind, BinOpKind::Mod) && matches!(left_ty, Type::Float) {
-                    return type_err(
-                        expr.node.span,
-                        format!("Modulo operator is not implemented for {left_ty}"),
-                    );
+                match op.kind {
+                    BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul | BinOpKind::Div => {
+                        if !left_ty.is_numeric() {
+                            return type_err(
+                                left.node.span,
+                                "Operator requires numeric type".to_string(),
+                            );
+                        }
+                        left_ty
+                    }
+
+                    BinOpKind::Mod => {
+                        if !left_ty.is_int() {
+                            return type_err(
+                                expr.node.span,
+                                format!("Modulo operator is not implemented for {left_ty}"),
+                            );
+                        }
+                        left_ty
+                    }
+
+                    BinOpKind::Eq | BinOpKind::Ne => Type::Bool,
+
+                    BinOpKind::Ge | BinOpKind::Gt | BinOpKind::Le | BinOpKind::Lt => {
+                        if !left_ty.is_numeric() {
+                            return type_err(
+                                left.node.span,
+                                "Operator requires numeric type".to_string(),
+                            );
+                        }
+                        Type::Bool
+                    }
                 }
-                left_ty
             }
             ExprKind::Call { callee, args } => {
                 let Type::Function { params, ret } = self.expr(callee)? else {

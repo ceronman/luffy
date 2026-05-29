@@ -19,6 +19,8 @@ fn main() {
             let r1 Float = a + b
             let r2 Int = x + y
             let r3 Float = -a
+
+            let b1 Bool = x > y
         }
     "#;
 

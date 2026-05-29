@@ -40,12 +40,26 @@ pub enum Instruction {
     I64DivS,
     I64RemS,
 
+    I64Eq,
+    I64Ne,
+    I64GeS,
+    I64GtS,
+    I64LeS,
+    I64LtS,
+
     F64Const(f64),
     F64Add,
     F64Sub,
     F64Mul,
     F64Div,
     F64Neg,
+
+    F64Eq,
+    F64Ne,
+    F64Ge,
+    F64Gt,
+    F64Lt,
+    F64Le,
 
     LocalGet(LocalIdx),
     LocalSet(LocalIdx),
