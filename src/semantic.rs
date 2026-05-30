@@ -236,7 +236,6 @@ impl Resolver {
                 let Type::Function { ret, .. } = &function_decl.ty else {
                     return resolve_err(expr.node.span, "Return outside of function");
                 };
-                // TODO: Add special case error message for function that returns Unit
                 check_ty_match(expr.node.span, ret, &ty)?;
             }
         }

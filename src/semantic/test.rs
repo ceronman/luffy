@@ -1,23 +1,286 @@
 use crate::{parser, pretty, semantic};
 use insta::assert_snapshot;
 
-fn check_module(src: &str) -> String {
+fn check(src: &str) -> String {
     match parser::parse(src) {
         Ok(module) => match semantic::semantic_analysis(&module) {
-            Ok(_semantics) => "<no error>".to_string(),
+            Ok(_) => "<no error>".to_string(),
             Err(err) => pretty::annotate_error_single(src, &err),
         },
-        Err(e) => {
-            format!("PARSE ERROR: {}", pretty::annotate_error_single(src, &e))
-        }
+        Err(e) => format!("PARSE ERROR: {}", pretty::annotate_error_single(src, &e)),
     }
 }
 
+// ── Valid programs ────────────────────────────────────────────────────────────
+
 #[test]
-fn function_incorrect_return_type() {
-    let src = "fn main() { return 0 }";
-    assert_snapshot!(check_module(src), @"
+fn valid_integer_return() {
+    assert_snapshot!(check("fn answer() Int { return 42 }"), @"<no error>");
+}
+
+#[test]
+fn valid_float_return() {
+    assert_snapshot!(check("fn pi() Float { return 3.14 }"), @"<no error>");
+}
+
+#[test]
+fn valid_bool_return() {
+    assert_snapshot!(check("fn yes() Bool { return true }"), @"<no error>");
+}
+
+#[test]
+fn valid_unit_function_empty_body() {
+    // A function with no return type annotation (Unit) and no return statement.
+    assert_snapshot!(check("fn main() { }"), @"<no error>");
+}
+
+#[test]
+fn valid_local_variable_declaration_and_use() {
+    let src = r#"
+        fn main() Int {
+            let x Int = 1
+            return x
+        }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn valid_variable_assignment() {
+    let src = r#"
+        fn main() {
+            let x Int = 1
+            x = 2
+        }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn valid_integer_arithmetic() {
+    assert_snapshot!(check("fn add(a Int, b Int) Int { return a + b }"), @"<no error>");
+}
+
+#[test]
+fn valid_float_arithmetic() {
+    assert_snapshot!(check("fn add(a Float, b Float) Float { return a + b }"), @"<no error>");
+}
+
+#[test]
+fn valid_integer_modulo() {
+    assert_snapshot!(check("fn rem(a Int, b Int) Int { return a % b }"), @"<no error>");
+}
+
+#[test]
+fn valid_comparison_produces_bool() {
+    // `<` on numeric operands must yield Bool.
+    assert_snapshot!(check("fn less(a Int, b Int) Bool { return a < b }"), @"<no error>");
+}
+
+#[test]
+fn valid_equality_on_bools() {
+    // `==` is valid for any matching types, including Bool.
+    assert_snapshot!(check("fn eq(a Bool, b Bool) Bool { return a == b }"), @"<no error>");
+}
+
+#[test]
+fn valid_function_call_with_correct_args() {
+    let src = r#"
+        fn double(x Int) Int { return x + x }
+        fn main() Int { return double(21) }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn valid_forward_function_reference() {
+    // All functions are pre-declared before bodies are checked, so a function
+    // may call one defined later in the file.
+    let src = r#"
+        fn main() Int { return helper() }
+        fn helper() Int { return 42 }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+// ── Name resolution errors ────────────────────────────────────────────────────
+
+#[test]
+fn error_undeclared_variable() {
+    assert_snapshot!(check("fn main() Int { return x }"), @r"
+    fn main() Int { return x }
+                           ^ ─── Undeclared 'x'
+    ");
+}
+
+#[test]
+fn error_undeclared_function_call() {
+    assert_snapshot!(check("fn main() Int { return unknown() }"), @r"
+    fn main() Int { return unknown() }
+                           ^^^^^^^ ─── Undeclared 'unknown'
+    ");
+}
+
+#[test]
+fn error_variable_used_before_its_declaration() {
+    assert_snapshot!(check("fn main() { let x Int = x }"), @r"
+    fn main() { let x Int = x }
+                            ^ ─── Undeclared 'x'
+    ");
+}
+
+#[test]
+fn error_duplicate_variable_in_same_scope() {
+    let src = r#"fn main() {
+    let x Int = 1
+    let x Int = 2
+}"#;
+    assert_snapshot!(check(src), @r"
+    let x Int = 2
+        ^ ─── Name 'x' is already declared in this scope
+    ");
+}
+
+#[test]
+// TODO: Fix this should be possible
+fn error_duplicate_function_name() {
+    let src = r#"fn foo() { }
+fn foo() { }"#;
+    assert_snapshot!(check(src), @r"
+    fn foo() { }
+       ^^^ ─── Name 'foo' is already declared in this scope
+    ");
+}
+
+// ── Type errors: return statements ───────────────────────────────────────────
+
+#[test]
+// TODO: Add special case error message for function that returns Unit
+fn error_return_int_from_unit_function() {
+    assert_snapshot!(check("fn main() { return 0 }"), @r"
     fn main() { return 0 }
                        ^ ─── Type mismatch: expected 'Unit', found 'Int'
+    ");
+}
+
+#[test]
+fn error_return_bool_from_int_function() {
+    assert_snapshot!(check("fn main() Int { return true }"), @r"
+    fn main() Int { return true }
+                           ^^^^ ─── Type mismatch: expected 'Int', found 'Bool'
+    ");
+}
+
+#[test]
+fn error_return_float_from_int_function() {
+    assert_snapshot!(check("fn main() Int { return 1.0 }"), @r"
+    fn main() Int { return 1.0 }
+                           ^^^ ─── Type mismatch: expected 'Int', found 'Float'
+    ");
+}
+
+// ── Type errors: variable declarations ───────────────────────────────────────
+
+#[test]
+fn error_declaration_initializer_type_mismatch() {
+    assert_snapshot!(check("fn main() { let x Int = true }"), @r"
+    fn main() { let x Int = true }
+                            ^^^^ ─── Type mismatch: expected 'Int', found 'Bool'
+    ");
+}
+
+#[test]
+fn error_declaration_float_initialised_with_int() {
+    assert_snapshot!(check("fn main() { let x Float = 1 }"), @r"
+    fn main() { let x Float = 1 }
+                              ^ ─── Type mismatch: expected 'Float', found 'Int'
+    ");
+}
+
+// ── Type errors: assignment ───────────────────────────────────────────────────
+
+#[test]
+fn error_assignment_type_mismatch() {
+    let src = r#"fn main() {
+        let x Int = 1
+        x = true
+    }"#;
+    assert_snapshot!(check(src), @r"
+    x = true
+        ^^^^ ─── Type mismatch: expected 'Int', found 'Bool'
+    ");
+}
+
+// ── Type errors: binary operators ────────────────────────────────────────────
+
+#[test]
+fn error_binary_operand_type_mismatch() {
+    // Right operand has a different type from the left.
+    assert_snapshot!(check("fn main() { return 1 + true }"), @r"
+    fn main() { return 1 + true }
+                           ^^^^ ─── Type mismatch: expected 'Int', found 'Bool'
+    ");
+}
+
+#[test]
+fn error_arithmetic_on_bool() {
+    // Bool is not a numeric type; arithmetic operators are not defined for it.
+    // TODO: improve error message
+    assert_snapshot!(check("fn main() { return true + false }"), @r"
+    fn main() { return true + false }
+                       ^^^^ ─── Operator requires numeric type
+    ");
+}
+
+#[test]
+fn error_comparison_on_bool() {
+    // Ordering comparisons require numeric operands.
+    assert_snapshot!(check("fn main() Bool { return true < false }"), @r"
+    fn main() Bool { return true < false }
+                            ^^^^ ─── Operator requires numeric type
+    ");
+}
+
+#[test]
+fn error_modulo_on_float() {
+    // `%` is only defined for integers; the error span covers the whole expression.
+    assert_snapshot!(check("fn main() Float { return 1.0 % 2.0 }"), @r"
+    fn main() Float { return 1.0 % 2.0 }
+                             ^^^^^^^^^ ─── Modulo operator is not implemented for Float
+    ");
+}
+
+// ── Type errors: function calls ───────────────────────────────────────────────
+
+#[test]
+// TODO: improve error message mentioning the actual type
+fn error_call_on_non_function() {
+    let src = r#"fn main() {
+    let x Int = 1
+    x()
+}"#;
+    assert_snapshot!(check(src), @r"
+    x()
+    ^ ─── Invalid function call: callee is not a function
+    ");
+}
+
+#[test]
+fn error_argument_type_mismatch() {
+    let src = r#"fn add(a Int, b Int) Int { return a + b }
+fn main() Int { return add(1, true) }"#;
+    assert_snapshot!(check(src), @r"
+    fn main() Int { return add(1, true) }
+                                  ^^^^ ─── Type mismatch: expected 'Int', found 'Bool'
+    ");
+}
+
+#[test]
+fn error_return_type_mismatch() {
+    let src = r#"fn add(a Int, b Int) Int { return a + b }
+fn main() Float { return add(1, 1) }"#;
+    assert_snapshot!(check(src), @"
+    fn main() Float { return add(1, 1) }
+                             ^^^^^^^^^ ─── Type mismatch: expected 'Float', found 'Int'
     ");
 }
