@@ -521,6 +521,116 @@ fn multiple_functions_in_module() {
     ");
 }
 
+// ── Export / import declaration tests ────────────────────────────────────────
+
+#[test]
+fn export_function() {
+    let src = "export fn add(a Int, b Int) Int { return a + b }";
+    assert_snapshot!(parse_module(src), @"
+    Module
+    └── Function [add]
+        ├── Export [true]
+        ├── Parameters
+        │   ├── Param
+        │   │   ├── Name
+        │   │   │   └── a
+        │   │   └── Type
+        │   │       └── Int
+        │   └── Param
+        │       ├── Name
+        │       │   └── b
+        │       └── Type
+        │           └── Int
+        ├── Return
+        │   └── Int
+        └── Body
+            └── Block
+                └── Return
+                    └── Binary [+]
+                        ├── Var [a]
+                        └── Var [b]
+    ");
+}
+
+#[test]
+fn import_function_no_params_no_return_type() {
+    assert_snapshot!(parse_module("import fn noop()"), @"
+    Module
+    └── Import [noop]
+        ├── Parameters
+        └── Return
+            └── Unit
+    ");
+}
+
+#[test]
+fn import_function_no_params_with_return_type() {
+    assert_snapshot!(parse_module("import fn answer() Int"), @"
+    Module
+    └── Import [answer]
+        ├── Parameters
+        └── Return
+            └── Int
+    ");
+}
+
+#[test]
+fn import_function_with_params_and_return_type() {
+    assert_snapshot!(parse_module("import fn add(a Int, b Int) Int"), @"
+    Module
+    └── Import [add]
+        ├── Parameters
+        │   ├── Param
+        │   │   ├── Name
+        │   │   │   └── a
+        │   │   └── Type
+        │   │       └── Int
+        │   └── Param
+        │       ├── Name
+        │       │   └── b
+        │       └── Type
+        │           └── Int
+        └── Return
+            └── Int
+    ");
+}
+
+#[test]
+fn module_with_import_and_export() {
+    let src = r#"
+        import fn log(n Int)
+        export fn double(x Int) Int { return x + x }
+    "#;
+    assert_snapshot!(parse_module(src), @"
+    Module
+    ├── Import [log]
+    │   ├── Parameters
+    │   │   └── Param
+    │   │       ├── Name
+    │   │       │   └── n
+    │   │       └── Type
+    │   │           └── Int
+    │   └── Return
+    │       └── Unit
+    └── Function [double]
+        ├── Export [true]
+        ├── Parameters
+        │   └── Param
+        │       ├── Name
+        │       │   └── x
+        │       └── Type
+        │           └── Int
+        ├── Return
+        │   └── Int
+        └── Body
+            └── Block
+                └── Return
+                    └── Binary [+]
+                        ├── Var [x]
+                        └── Var [x]
+    ");
+}
+
 // ── Error tests ───────────────────────────────────────────────────────────────
 
 #[test]
@@ -579,5 +689,23 @@ fn error_unclosed_grouping_parenthesis() {
     assert_snapshot!(parse_expr("(1 + 2"), @"
     (1 + 2
           ^ ─── Expected `)`, got <End of line>
+    ");
+}
+
+#[test]
+fn error_missing_fn_after_import() {
+    // `import` must be immediately followed by `fn`
+    assert_snapshot!(parse_module("import foo()"), @"
+    import foo()
+           ^^^ ─── Expected `fn`, got <Identifier>
+    ");
+}
+
+#[test]
+fn error_missing_fn_after_export() {
+    // `export` must be immediately followed by `fn`
+    assert_snapshot!(parse_module("export bar() {}"), @"
+    export bar() {}
+           ^^^ ─── Expected `fn`, got <Identifier>
     ");
 }

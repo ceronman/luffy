@@ -284,3 +284,71 @@ fn main() Float { return add(1, 1) }"#;
                              ^^^^^^^^^ ─── Type mismatch: expected 'Float', found 'Int'
     ");
 }
+
+// ── Export tests ──────────────────────────────────────────────────────────────
+
+#[test]
+fn valid_export_function() {
+    // `export fn` is semantically identical to `fn`; the export flag is for
+    // the code generator, not the type checker.
+    assert_snapshot!(check("export fn add(a Int, b Int) Int { return a + b }"), @"<no error>");
+}
+
+#[test]
+fn valid_export_function_callable_internally() {
+    // An exported function can still be called by other functions in the module.
+    let src = r#"
+        export fn helper() Int { return 1 }
+        fn main() Int { return helper() }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+// ── Import tests ──────────────────────────────────────────────────────────────
+
+#[test]
+fn valid_import_function_call() {
+    // An imported function is pre-declared and can be called like any other.
+    let src = r#"
+        import fn add(a Int, b Int) Int
+        fn main() Int { return add(1, 2) }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn error_import_duplicate_name() {
+    let src = r#"
+        import fn foo()
+        import fn foo()
+    "#;
+    assert_snapshot!(check(src), @r"
+    import fn foo()
+              ^^^ ─── Name 'foo' is already declared in this scope
+    ");
+}
+
+#[test]
+fn error_import_and_function_name_clash() {
+    // Declaring a function with the same name as an import is an error.
+    let src = r#"
+        import fn foo() Int
+        fn foo() Int { return 1 }
+    "#;
+    assert_snapshot!(check(src), @r"
+    fn foo() Int { return 1 }
+       ^^^ ─── Name 'foo' is already declared in this scope
+    ");
+}
+
+#[test]
+fn error_call_imported_function_wrong_arg_type() {
+    let src = r#"
+        import fn add(a Int, b Int) Int
+        fn main() Int { return add(1, true) }
+    "#;
+    assert_snapshot!(check(src), @r"
+    fn main() Int { return add(1, true) }
+                                  ^^^^ ─── Type mismatch: expected 'Int', found 'Bool'
+    ");
+}

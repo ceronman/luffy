@@ -30,6 +30,14 @@ fn keywords() {
 }
 
 #[test]
+fn import_export_keywords() {
+    assert_snapshot!(
+        tokens("import export"),
+        @"[ `import`  `export` ]"
+    );
+}
+
+#[test]
 fn identifiers() {
     assert_snapshot!(
         tokens("one two three foo bar"),
