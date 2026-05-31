@@ -18,16 +18,29 @@ pub struct Identifier {
 #[derive(Debug)]
 pub struct Module {
     pub node: Node,
-    pub items: Vec<Function>,
+    pub items: Vec<Item>,
 }
 
 #[derive(Debug)]
-pub struct Function {
+pub struct Item {
     pub node: Node,
-    pub name: Identifier,
-    pub return_ty: Option<TypeRef>,
-    pub params: Vec<Param>,
-    pub body: Stmt,
+    pub kind: ItemKind,
+}
+
+#[derive(Debug)]
+pub enum ItemKind {
+    Function {
+        export: bool,
+        name: Identifier,
+        params: Vec<Param>,
+        return_ty: Option<TypeRef>,
+        body: Stmt,
+    },
+    Import {
+        name: Identifier,
+        params: Vec<Param>,
+        return_ty: Option<TypeRef>,
+    },
 }
 
 #[derive(Debug)]

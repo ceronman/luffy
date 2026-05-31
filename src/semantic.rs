@@ -2,7 +2,7 @@
 mod test;
 
 use crate::ast::{
-    BinOpKind, Expr, ExprKind, Function, Identifier, LiteralKind, Module, NodeId, Param, Stmt,
+    BinOpKind, Expr, ExprKind, Identifier, ItemKind, LiteralKind, Module, NodeId, Param, Stmt,
     StmtKind, Symbol, TypeKind, TypeRef,
 };
 use crate::error::{CompilerError, ErrorKind};
@@ -102,100 +102,56 @@ impl Resolver {
     fn module(&mut self, module: &Module) -> Result<()> {
         self.begin_scope();
 
-        for function in &module.items {
-            let params: Vec<Type> = function.params.iter().map(|p| p.ty.lower()).collect();
-            let ret = function
-                .return_ty
-                .as_ref()
-                .map(|t| t.lower())
-                .unwrap_or(Type::Unit);
-            let ty = Type::Function {
-                params: Rc::from(params),
-                ret: Rc::from(ret),
-            };
-            self.declare(&function.name, ty, DeclarationKind::Function)?;
+        for item in &module.items {
+            match &item.kind {
+                ItemKind::Function {
+                    name,
+                    params,
+                    return_ty,
+                    ..
+                }
+                | ItemKind::Import {
+                    name,
+                    params,
+                    return_ty,
+                } => {
+                    let params: Vec<Type> = params.iter().map(|p| p.ty.lower()).collect();
+                    let ret = return_ty.as_ref().map(|t| t.lower()).unwrap_or(Type::Unit);
+                    let ty = Type::Function {
+                        params: Rc::from(params),
+                        ret: Rc::from(ret),
+                    };
+                    self.declare(name, ty, DeclarationKind::Function)?;
+                }
+            }
         }
 
         for function in &module.items {
-            self.function(function)?;
+            if let ItemKind::Function {
+                name, params, body, ..
+            } = &function.kind
+            {
+                self.function(name, params, body)?;
+            }
         }
         self.end_scope();
         Ok(())
     }
 
-    fn declare(
-        &mut self,
-        ident: &Identifier,
-        ty: Type,
-        kind: DeclarationKind,
-    ) -> Result<DeclarationId> {
-        let scope = self.scopes.front_mut().expect("Declaration without scope");
-        let name = ident.symbol.clone();
-
-        if scope.contains_key(&name) {
-            return resolve_err(
-                ident.node.span,
-                format!("Name '{name}' is already declared in this scope"),
-            );
-        }
-
-        let decl_id = self.semantics.declarations.len();
-        let decl = Declaration {
-            id: decl_id,
-            ty,
-            kind,
-        };
-        self.semantics.declarations.push(decl);
-
-        scope.insert(name, decl_id);
-
-        Ok(decl_id)
-    }
-
-    fn declare_local(
-        &mut self,
-        ident: &Identifier,
-        ty: Type,
-        func_id: DeclarationId,
-    ) -> Result<()> {
-        let decl_id = self.declare(ident, ty, DeclarationKind::Local(func_id))?;
-        self.semantics.uses.insert(ident.node.id, decl_id);
-        Ok(())
-    }
-
-    fn lookup(&self, ident: &Identifier) -> Result<DeclarationId> {
-        let Some(decl_id) = self
-            .scopes
-            .iter()
-            .find_map(|scope| scope.get(&ident.symbol))
-            .copied()
-        else {
-            return resolve_err(ident.node.span, format!("Undeclared '{}'", ident.symbol));
-        };
-
-        Ok(decl_id)
-    }
-
-    fn lookup_ty(&self, ident: &Identifier) -> Result<Type> {
-        let decl_id = self.lookup(ident)?;
-        let Some(decl) = self.semantics.declarations.get(decl_id) else {
-            return resolve_err(ident.node.span, format!("Undeclared '{}'", ident.symbol));
-        };
-        Ok(decl.ty.clone())
-    }
-
-    fn function(&mut self, f: &Function) -> Result<()> {
-        let decl_id = self.lookup(&f.name)?;
-        self.semantics.uses.insert(f.name.node.id, decl_id);
+    fn function(&mut self, name: &Identifier, params: &[Param], body: &Stmt) -> Result<()> {
+        let decl_id = self.lookup(name)?;
+        self.semantics.uses.insert(name.node.id, decl_id);
 
         self.begin_scope();
-
-        for Param { name, ty, .. } in f.params.iter() {
-            self.declare_local(name, ty.lower(), decl_id)?
+        for Param {
+            name: param_name,
+            ty,
+            ..
+        } in params.iter()
+        {
+            self.declare_local(param_name, ty.lower(), decl_id)?
         }
-
-        self.stmt(&f.body, decl_id)?;
-
+        self.stmt(body, decl_id)?;
         self.end_scope();
 
         Ok(())
@@ -317,6 +273,67 @@ impl Resolver {
 
     fn end_scope(&mut self) {
         self.scopes.pop_front();
+    }
+
+    fn declare(
+        &mut self,
+        ident: &Identifier,
+        ty: Type,
+        kind: DeclarationKind,
+    ) -> Result<DeclarationId> {
+        let scope = self.scopes.front_mut().expect("Declaration without scope");
+        let name = ident.symbol.clone();
+
+        if scope.contains_key(&name) {
+            return resolve_err(
+                ident.node.span,
+                format!("Name '{name}' is already declared in this scope"),
+            );
+        }
+
+        let decl_id = self.semantics.declarations.len();
+        let decl = Declaration {
+            id: decl_id,
+            ty,
+            kind,
+        };
+        self.semantics.declarations.push(decl);
+
+        scope.insert(name, decl_id);
+
+        Ok(decl_id)
+    }
+
+    fn declare_local(
+        &mut self,
+        ident: &Identifier,
+        ty: Type,
+        func_id: DeclarationId,
+    ) -> Result<()> {
+        let decl_id = self.declare(ident, ty, DeclarationKind::Local(func_id))?;
+        self.semantics.uses.insert(ident.node.id, decl_id);
+        Ok(())
+    }
+
+    fn lookup(&self, ident: &Identifier) -> Result<DeclarationId> {
+        let Some(decl_id) = self
+            .scopes
+            .iter()
+            .find_map(|scope| scope.get(&ident.symbol))
+            .copied()
+        else {
+            return resolve_err(ident.node.span, format!("Undeclared '{}'", ident.symbol));
+        };
+
+        Ok(decl_id)
+    }
+
+    fn lookup_ty(&self, ident: &Identifier) -> Result<Type> {
+        let decl_id = self.lookup(ident)?;
+        let Some(decl) = self.semantics.declarations.get(decl_id) else {
+            return resolve_err(ident.node.span, format!("Undeclared '{}'", ident.symbol));
+        };
+        Ok(decl.ty.clone())
     }
 }
 

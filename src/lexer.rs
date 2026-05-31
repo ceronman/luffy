@@ -42,6 +42,8 @@ pub enum TokenKind {
     While,
     Fn,
     Return,
+    Import,
+    Export,
 
     LineComment,
     BlockComment,
@@ -243,6 +245,8 @@ impl<'src> Lexer<'src> {
             "while" => TokenKind::While,
             "fn" => TokenKind::Fn,
             "return" => TokenKind::Return,
+            "import" => TokenKind::Import,
+            "export" => TokenKind::Export,
             _ => TokenKind::Identifier,
         }
     }
@@ -300,6 +304,8 @@ impl Display for TokenKind {
             TokenKind::While => "`while`",
             TokenKind::Fn => "`fn`",
             TokenKind::Return => "`return`",
+            TokenKind::Import => "`import`",
+            TokenKind::Export => "`export`",
             TokenKind::LineComment => "<Line comment>",
             TokenKind::BlockComment => "<Block comment>",
             TokenKind::Whitespace => "<Whitespace>",

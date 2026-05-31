@@ -1,3 +1,4 @@
+use crate::ast::ItemKind;
 use crate::error::CompilerError;
 use crate::semantic::{Declaration, DeclarationId, DeclarationKind, Semantics, Type};
 use crate::{ast, ir};
@@ -16,15 +17,26 @@ impl Compiler {
         let mut types = Vec::new();
         let mut functions = Vec::new();
         let mut exports = Vec::new();
-        for function in &module.items {
-            let ty = self.func_type(function)?;
-            let ty_idx = types.len() as ir::TypeIdx;
-            types.push(ir::Type::Function(ty));
-            let func_idx = functions.len() as ir::FuncIdx;
-            let f = self.function(ty_idx, function)?;
-            functions.push(f);
-            let export = self.func_export(func_idx, function)?;
-            exports.push(export);
+        for item in &module.items {
+            if let ItemKind::Function {
+                export,
+                name,
+                params,
+                body,
+                ..
+            } = &item.kind
+            {
+                let ty = self.func_type(name)?;
+                let ty_idx = types.len() as ir::TypeIdx;
+                types.push(ir::Type::Function(ty));
+                let func_idx = functions.len() as ir::FuncIdx;
+                let f = self.function(ty_idx, name, params, body)?;
+                functions.push(f);
+                if *export {
+                    let export = self.func_export(func_idx, name)?;
+                    exports.push(export);
+                }
+            }
         }
         Ok(ir::Module {
             types,
@@ -33,8 +45,8 @@ impl Compiler {
         })
     }
 
-    fn func_type(&self, function: &ast::Function) -> Result<ir::FuncType> {
-        let Type::Function { params, ret } = self.declaration_type(&function.name) else {
+    fn func_type(&self, name: &ast::Identifier) -> Result<ir::FuncType> {
+        let Type::Function { params, ret } = self.declaration_type(name) else {
             panic!("Function is not of type function")
         };
 
@@ -50,17 +62,27 @@ impl Compiler {
         Ok(ir::FuncType { params, results })
     }
 
-    fn function(&self, ty: ir::TypeIdx, function: &ast::Function) -> Result<ir::Function> {
-        let func_id = self.declaration_id(&function.name);
+    fn function(
+        &self,
+        ty: ir::TypeIdx,
+        name: &ast::Identifier,
+        params: &[ast::Param],
+        body: &ast::Stmt,
+    ) -> Result<ir::Function> {
+        let func_id = self.declaration_id(name);
         let locals = self
             .function_locals(func_id)
-            .skip(function.params.len())
+            .skip(params.len())
             .map(|d| d.ty.lower())
             .collect::<Result<Vec<ir::ValType>>>()?;
-        let mut body = Vec::new();
-        self.stmt(&mut body, &function.body)?;
-        body.push(ir::Instruction::End);
-        Ok(ir::Function { ty, locals, body })
+        let mut ins = Vec::new();
+        self.stmt(&mut ins, body)?;
+        ins.push(ir::Instruction::End);
+        Ok(ir::Function {
+            ty,
+            locals,
+            body: ins,
+        })
     }
 
     fn stmt(&self, ins: &mut Vec<ir::Instruction>, stmt: &ast::Stmt) -> Result<()> {
@@ -168,9 +190,9 @@ impl Compiler {
         Ok(())
     }
 
-    fn func_export(&self, func_idx: ir::FuncIdx, func: &ast::Function) -> Result<ir::Export> {
+    fn func_export(&self, func_idx: ir::FuncIdx, name: &ast::Identifier) -> Result<ir::Export> {
         Ok(ir::Export {
-            name: func.name.symbol.to_string(),
+            name: name.symbol.to_string(),
             kind: ir::ExportKind::Function(func_idx),
         })
     }

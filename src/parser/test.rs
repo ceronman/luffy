@@ -1,4 +1,4 @@
-use crate::ast::StmtKind;
+use crate::ast::{ItemKind, StmtKind};
 use crate::{parser, pretty};
 use insta::assert_snapshot;
 
@@ -13,7 +13,10 @@ fn parse_expr(expr: &str) -> String {
     let module = format!("fn foo() {{\n{expr}\n}}");
     match parser::parse(&module) {
         Ok(m) => {
-            let StmtKind::Block { statements } = &m.items[0].body.kind else {
+            let ItemKind::Function { body, .. } = &m.items[0].kind else {
+                return pretty::ast::module(&m).unwrap();
+            };
+            let StmtKind::Block { statements } = &body.kind else {
                 return pretty::ast::module(&m).unwrap();
             };
             let StmtKind::ExprStmt { expr: e } = &statements[0].kind else {
@@ -29,7 +32,10 @@ fn parse_stmt(stmt_src: &str) -> String {
     let module = format!("fn foo() {{\n{stmt_src}\n}}");
     match parser::parse(&module) {
         Ok(m) => {
-            let StmtKind::Block { statements } = &m.items[0].body.kind else {
+            let ItemKind::Function { body, .. } = &m.items[0].kind else {
+                return pretty::ast::module(&m).unwrap();
+            };
+            let StmtKind::Block { statements } = &body.kind else {
                 return pretty::ast::module(&m).unwrap();
             };
             pretty::ast::stmt(&statements[0]).unwrap()
@@ -402,9 +408,13 @@ fn block_multiple_statements() {
 #[test]
 fn function_no_params_no_return_type() {
     let src = "fn main() { return 0 }";
-    assert_snapshot!(parse_module(src), @r"
+    assert_snapshot!(parse_module(src), @"
     Module
     └── Function [main]
+        ├── Export [false]
+        ├── Parameters
+        ├── Return
+        │   └── Unit
         └── Body
             └── Block
                 └── Return
@@ -417,9 +427,13 @@ fn function_with_return_type() {
     // Return type is validated by the parser (no unknown-type error) even
     // though the pretty printer does not display it explicitly.
     let src = "fn answer() Int { return 42 }";
-    assert_snapshot!(parse_module(src), @r"
+    assert_snapshot!(parse_module(src), @"
     Module
     └── Function [answer]
+        ├── Export [false]
+        ├── Parameters
+        ├── Return
+        │   └── Int
         └── Body
             └── Block
                 └── Return
@@ -430,15 +444,18 @@ fn function_with_return_type() {
 #[test]
 fn function_single_param() {
     let src = "fn double(x Int) Int { return x }";
-    assert_snapshot!(parse_module(src), @r"
+    assert_snapshot!(parse_module(src), @"
     Module
     └── Function [double]
+        ├── Export [false]
         ├── Parameters
         │   └── Param
         │       ├── Name
         │       │   └── x
         │       └── Type
         │           └── Int
+        ├── Return
+        │   └── Int
         └── Body
             └── Block
                 └── Return
@@ -449,9 +466,10 @@ fn function_single_param() {
 #[test]
 fn function_multiple_params() {
     let src = "fn add(a Int, b Int) Int { return a + b }";
-    assert_snapshot!(parse_module(src), @r"
+    assert_snapshot!(parse_module(src), @"
     Module
     └── Function [add]
+        ├── Export [false]
         ├── Parameters
         │   ├── Param
         │   │   ├── Name
@@ -463,6 +481,8 @@ fn function_multiple_params() {
         │       │   └── b
         │       └── Type
         │           └── Int
+        ├── Return
+        │   └── Int
         └── Body
             └── Block
                 └── Return
@@ -478,14 +498,22 @@ fn multiple_functions_in_module() {
         fn one() { return 1 }
         fn two() { return 2 }
     "#;
-    assert_snapshot!(parse_module(src), @r"
+    assert_snapshot!(parse_module(src), @"
     Module
     ├── Function [one]
+    │   ├── Export [false]
+    │   ├── Parameters
+    │   ├── Return
+    │   │   └── Unit
     │   └── Body
     │       └── Block
     │           └── Return
     │               └── Int[1]
     └── Function [two]
+        ├── Export [false]
+        ├── Parameters
+        ├── Return
+        │   └── Unit
         └── Body
             └── Block
                 └── Return
@@ -499,7 +527,7 @@ fn multiple_functions_in_module() {
 fn error_missing_fn_keyword() {
     assert_snapshot!(parse_module("foo() {}"), @"
     foo() {}
-    ^^^ ─── Expected `fn`, got <Identifier>
+    ^^^ ─── Expected item declaration, found <Identifier> instead
     ");
 }
 

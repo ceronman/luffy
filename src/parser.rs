@@ -3,8 +3,8 @@ mod test;
 
 use crate::ast::StmtKind::{Assignment, ExprStmt};
 use crate::ast::{
-    BinOp, BinOpKind, Expr, ExprKind, Function, Identifier, LiteralKind, Module, Node, Param, Stmt,
-    StmtKind, TypeKind, TypeRef, UnOp, UnOpKind,
+    BinOp, BinOpKind, Expr, ExprKind, Identifier, Item, ItemKind, LiteralKind, Module, Node, Param,
+    Stmt, StmtKind, TypeKind, TypeRef, UnOp, UnOpKind,
 };
 use crate::error::{CompilerError, ErrorKind};
 use crate::lexer::{Lexer, Span, Token, TokenKind};
@@ -46,7 +46,7 @@ impl<'src> Parser<'src> {
         let mut items = Vec::new();
 
         while self.current.kind != TokenKind::Eof {
-            let item = self.function()?;
+            let item = self.item()?;
             end = item.node.span;
             items.push(item);
             self.maybe_eol();
@@ -58,13 +58,75 @@ impl<'src> Parser<'src> {
         })
     }
 
-    fn function(&mut self) -> Result<Function> {
-        let fn_keyword = self.expect(TokenKind::Fn)?;
+    fn item(&mut self) -> Result<Item> {
+        match self.current.kind {
+            TokenKind::Export | TokenKind::Fn => self.function(),
+            TokenKind::Import => self.import(),
+            _ => error(
+                self.current.span,
+                format!(
+                    "Expected item declaration, found {} instead",
+                    self.current.kind
+                ),
+            ),
+        }
+    }
+
+    fn function(&mut self) -> Result<Item> {
+        let begin = self.current.span;
+        let export = self.eat(TokenKind::Export);
+        self.expect(TokenKind::Fn)?;
         // TODO: handle new lines between
-        // TODO: Improve error messages across the board
         let name =
             self.identifier(|t| format!("Expected function name, found {} instead", t.kind))?;
         self.expect(TokenKind::LParen)?;
+        let params = self.params()?;
+        self.expect(TokenKind::RParen)?;
+        let return_ty = if self.current.kind == TokenKind::Identifier {
+            Some(self.type_ref()?)
+        } else {
+            None
+        };
+        let body = self.statement()?;
+        Ok(Item {
+            node: self.node(begin, body.node.span),
+            kind: ItemKind::Function {
+                export,
+                name,
+                return_ty,
+                params,
+                body,
+            },
+        })
+    }
+
+    fn import(&mut self) -> Result<Item> {
+        let begin = self.expect(TokenKind::Import)?.span;
+        self.expect(TokenKind::Fn)?;
+        // TODO: handle new lines between
+        let name =
+            self.identifier(|t| format!("Expected function name, found {} instead", t.kind))?;
+        self.expect(TokenKind::LParen)?;
+        let params = self.params()?;
+        let mut end = self.expect(TokenKind::RParen)?.span;
+        let return_ty = if self.current.kind == TokenKind::Identifier {
+            let type_ref = self.type_ref()?;
+            end = type_ref.node.span;
+            Some(type_ref)
+        } else {
+            None
+        };
+        Ok(Item {
+            node: self.node(begin, end),
+            kind: ItemKind::Import {
+                name,
+                return_ty,
+                params,
+            },
+        })
+    }
+
+    fn params(&mut self) -> Result<Vec<Param>> {
         let mut params = Vec::new();
         if self.current.kind != TokenKind::RParen {
             loop {
@@ -76,20 +138,7 @@ impl<'src> Parser<'src> {
                 }
             }
         }
-        self.expect(TokenKind::RParen)?;
-        let return_ty = if self.current.kind == TokenKind::Identifier {
-            Some(self.type_ref()?)
-        } else {
-            None
-        };
-        let body = self.statement()?;
-        Ok(Function {
-            node: self.node(fn_keyword.span, body.node.span),
-            name,
-            return_ty,
-            params,
-            body,
-        })
+        Ok(params)
     }
 
     fn identifier(&mut self, msg: impl Fn(Token) -> String) -> Result<Identifier> {

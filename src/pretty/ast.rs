@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinOpKind, Expr, ExprKind, Function, Identifier, LiteralKind, Module, Stmt, StmtKind, TypeKind,
-    TypeRef, UnOpKind,
+    BinOpKind, Expr, ExprKind, Identifier, Item, ItemKind, LiteralKind, Module, Stmt, StmtKind,
+    TypeKind, TypeRef, UnOpKind,
 };
 use std::fmt::Write;
 
@@ -17,27 +17,75 @@ impl PrettyAst {
         }
     }
     fn module(program: &Module) -> Self {
-        Self::new("Module", program.items.iter().map(Self::function))
+        Self::new("Module", program.items.iter().map(Self::item))
     }
-    fn function(function: &Function) -> PrettyAst {
-        let mut children = Vec::new();
-
-        if !function.params.is_empty() {
-            children.push(Self::new(
-                "Parameters",
-                function.params.iter().map(|param| {
+    fn item(item: &Item) -> PrettyAst {
+        match &item.kind {
+            ItemKind::Function {
+                export,
+                name,
+                params,
+                return_ty,
+                body,
+            } => Self::new(
+                format!("Function [{}]", name.symbol),
+                vec![
+                    Self::new(format!("Export [{export}]"), vec![]),
                     Self::new(
-                        "Param",
+                        "Parameters",
+                        params.iter().map(|param| {
+                            Self::new(
+                                "Param",
+                                vec![
+                                    Self::new("Name", vec![Self::identifier(&param.name)]),
+                                    Self::new("Type", vec![Self::ty(&param.ty)]),
+                                ],
+                            )
+                        }),
+                    ),
+                    Self::new(
+                        "Return",
                         vec![
-                            Self::new("Name", vec![Self::identifier(&param.name)]),
-                            Self::new("Type", vec![Self::ty(&param.ty)]),
+                            return_ty
+                                .as_ref()
+                                .map(Self::ty)
+                                .unwrap_or(Self::new("Unit", vec![])),
                         ],
-                    )
-                }),
-            ))
+                    ),
+                    Self::new("Body", vec![Self::stmt(body)]),
+                ],
+            ),
+            ItemKind::Import {
+                name,
+                params,
+                return_ty,
+            } => Self::new(
+                format!("Import [{}]", name.symbol),
+                vec![
+                    Self::new(
+                        "Parameters",
+                        params.iter().map(|param| {
+                            Self::new(
+                                "Param",
+                                vec![
+                                    Self::new("Name", vec![Self::identifier(&param.name)]),
+                                    Self::new("Type", vec![Self::ty(&param.ty)]),
+                                ],
+                            )
+                        }),
+                    ),
+                    Self::new(
+                        "Return",
+                        vec![
+                            return_ty
+                                .as_ref()
+                                .map(Self::ty)
+                                .unwrap_or(Self::new("Unit", vec![])),
+                        ],
+                    ),
+                ],
+            ),
         }
-        children.push(Self::new("Body", vec![Self::stmt(&function.body)]));
-        Self::new(format!("Function [{}]", function.name.symbol), children)
     }
     fn stmt(statement: &Stmt) -> PrettyAst {
         match &statement.kind {
