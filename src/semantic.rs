@@ -127,11 +127,16 @@ impl Resolver {
         }
 
         for function in &module.items {
-            if let ItemKind::Function {
-                name, params, body, ..
-            } = &function.kind
-            {
-                self.function(name, params, body)?;
+            match &function.kind {
+                ItemKind::Function {
+                    name, params, body, ..
+                } => {
+                    self.function(name, params, body)?;
+                }
+                ItemKind::Import { name, .. } => {
+                    let decl_id = self.lookup(name)?;
+                    self.semantics.uses.insert(name.node.id, decl_id);
+                }
             }
         }
         self.end_scope();

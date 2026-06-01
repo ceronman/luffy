@@ -10,8 +10,9 @@ pub mod semantic;
 
 fn main() {
     let code = r#"
-        export fn f(a Int, b Int) Int {
-            a + b
+        import fn print_int(x Int)
+        export fn main() {
+            print_int(256)
         }
     "#;
 

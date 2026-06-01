@@ -5,6 +5,7 @@ pub type FuncIdx = Idx;
 
 pub struct Module {
     pub types: Vec<Type>,
+    pub imports: Vec<Import>,
     pub functions: Vec<Function>,
     pub exports: Vec<Export>,
 }
@@ -68,10 +69,16 @@ pub enum Instruction {
 }
 
 pub struct Export {
-    pub name: String,
+    pub name: String, // TODO: change strings to symbols
     pub kind: ExportKind,
 }
 
 pub enum ExportKind {
     Function(FuncIdx),
+}
+
+pub struct Import {
+    pub module: String,
+    pub name: String,
+    pub func_type: TypeIdx, // TODO: Generalize
 }

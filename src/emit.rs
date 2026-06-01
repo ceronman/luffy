@@ -1,7 +1,7 @@
 use crate::ir;
 use wasm_encoder::{
-    CodeSection, ExportKind, ExportSection, Function, FunctionSection, Instruction, Module,
-    TypeSection, ValType,
+    CodeSection, EntityType, ExportKind, ExportSection, Function, FunctionSection, ImportSection,
+    Instruction, Module, TypeSection, ValType,
 };
 
 pub fn emit(module: ir::Module) -> Vec<u8> {
@@ -19,6 +19,16 @@ pub fn emit(module: ir::Module) -> Vec<u8> {
         }
     }
     bin_module.section(&types);
+
+    let mut imports = ImportSection::new();
+    for import in &module.imports {
+        imports.import(
+            &import.module,
+            &import.name,
+            EntityType::Function(import.func_type),
+        );
+    }
+    bin_module.section(&imports);
 
     let mut functions = FunctionSection::new();
     let mut codes = CodeSection::new();
@@ -100,10 +110,18 @@ pub fn run(binary: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
     let engine = wasmtime::Engine::default();
     let module = wasmtime::Module::from_binary(&engine, binary)?;
     let mut store = wasmtime::Store::new(&engine, ());
-    let linker = wasmtime::Linker::new(&engine);
+    let mut linker = wasmtime::Linker::new(&engine);
+
+    linker.func_wrap(
+        "js",
+        "print_int",
+        |_caller: wasmtime::Caller<'_, ()>, i: i64| {
+            println!("{i}");
+        },
+    )?;
+
     let instance = linker.instantiate(&mut store, &module)?;
-    let f = instance.get_typed_func::<(i64, i64), i64>(&mut store, "f")?;
-    let result = f.call(&mut store, (10, 20))?;
-    println!("The result of 10 + 20 is: {}", result);
+    let f = instance.get_typed_func::<(), ()>(&mut store, "main")?;
+    f.call(&mut store, ())?;
     Ok(())
 }

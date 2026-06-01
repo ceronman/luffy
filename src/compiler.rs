@@ -13,10 +13,28 @@ struct Compiler {
 pub type Result<T> = std::result::Result<T, CompilerError>;
 
 impl Compiler {
-    fn module(&self, module: &ast::Module) -> Result<ir::Module> {
+    fn module(&mut self, module: &ast::Module) -> Result<ir::Module> {
         let mut types = Vec::new();
+        let mut imports = Vec::new();
         let mut functions = Vec::new();
         let mut exports = Vec::new();
+
+        for item in &module.items {
+            if let ItemKind::Import { name, .. } = &item.kind {
+                let decl_id = self.declaration_id(name);
+                let func_idx = self.func_addresses.len() as ir::FuncIdx;
+                self.func_addresses.insert(decl_id, func_idx);
+                let ty = self.func_type(name)?;
+                let ty_idx = types.len() as ir::TypeIdx;
+                types.push(ir::Type::Function(ty));
+                let import = ir::Import {
+                    module: "js".to_string(),
+                    name: name.symbol.clone(),
+                    func_type: ty_idx,
+                };
+                imports.push(import);
+            }
+        }
         for item in &module.items {
             if let ItemKind::Function {
                 export,
@@ -26,10 +44,12 @@ impl Compiler {
                 ..
             } = &item.kind
             {
+                let decl_id = self.declaration_id(name);
+                let func_idx = self.func_addresses.len() as ir::FuncIdx;
+                self.func_addresses.insert(decl_id, func_idx);
                 let ty = self.func_type(name)?;
                 let ty_idx = types.len() as ir::TypeIdx;
                 types.push(ir::Type::Function(ty));
-                let func_idx = functions.len() as ir::FuncIdx;
                 let f = self.function(ty_idx, name, params, body)?;
                 functions.push(f);
                 if *export {
@@ -40,6 +60,7 @@ impl Compiler {
         }
         Ok(ir::Module {
             types,
+            imports,
             functions,
             exports,
         })
@@ -199,20 +220,13 @@ impl Compiler {
 
     fn calculate_addresses(&mut self) {
         let mut local_indices: HashMap<DeclarationId, ir::LocalIdx> = HashMap::new();
-        let mut func_address = 0;
         for decl in &self.semantics.declarations {
-            match decl.kind {
-                DeclarationKind::Local(fn_id) => {
-                    let address = *local_indices
-                        .entry(fn_id)
-                        .and_modify(|count| *count += 1)
-                        .or_insert(0);
-                    self.local_addresses.insert(decl.id, address);
-                }
-                DeclarationKind::Function => {
-                    self.func_addresses.insert(decl.id, func_address);
-                    func_address += 1;
-                }
+            if let DeclarationKind::Local(fn_id) = decl.kind {
+                let address = *local_indices
+                    .entry(fn_id)
+                    .and_modify(|count| *count += 1)
+                    .or_insert(0);
+                self.local_addresses.insert(decl.id, address);
             };
         }
     }
