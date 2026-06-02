@@ -15,6 +15,8 @@ fn compile_to_wat(src: &str) -> String {
     }
 }
 
+// ── Literals and types ────────────────────────────────────────────────────────
+
 #[test]
 fn simple_function() {
     let wat = compile_to_wat(r#"fn main() Int { 1 + 1 }"#);
@@ -28,4 +30,426 @@ fn simple_function() {
       )
     )
     ")
+}
+
+#[test]
+fn return_integer_literal() {
+    assert_snapshot!(compile_to_wat("fn main() Int { return 42 }"), @"
+    (module
+      (type (;0;) (func (result i64)))
+      (func (;0;) (type 0) (result i64)
+        i64.const 42
+      )
+    )
+    ");
+}
+
+#[test]
+fn return_bool_literal() {
+    // Bool maps to i32; `true` becomes i32.const 1, `false` becomes i32.const 0.
+    assert_snapshot!(compile_to_wat("fn main() Bool { return true }"), @"
+    (module
+      (type (;0;) (func (result i32)))
+      (func (;0;) (type 0) (result i32)
+        i32.const 1
+      )
+    )
+    ");
+}
+
+#[test]
+fn unit_function() {
+    // A function with no return type has no result in the type signature.
+    assert_snapshot!(compile_to_wat("fn main() { }"), @"
+    (module
+      (type (;0;) (func))
+      (func (;0;) (type 0))
+    )
+    ");
+}
+
+// ── Integer arithmetic ────────────────────────────────────────────────────────
+
+#[test]
+fn integer_subtraction() {
+    assert_snapshot!(compile_to_wat("fn sub(a Int, b Int) Int { return a - b }"), @"
+    (module
+      (type (;0;) (func (param i64 i64) (result i64)))
+      (func (;0;) (type 0) (param i64 i64) (result i64)
+        local.get 0
+        local.get 1
+        i64.sub
+      )
+    )
+    ");
+}
+
+#[test]
+fn integer_multiplication() {
+    assert_snapshot!(compile_to_wat("fn mul(a Int, b Int) Int { return a * b }"), @"
+    (module
+      (type (;0;) (func (param i64 i64) (result i64)))
+      (func (;0;) (type 0) (param i64 i64) (result i64)
+        local.get 0
+        local.get 1
+        i64.mul
+      )
+    )
+    ");
+}
+
+#[test]
+fn integer_division() {
+    assert_snapshot!(compile_to_wat("fn div(a Int, b Int) Int { return a / b }"), @"
+    (module
+      (type (;0;) (func (param i64 i64) (result i64)))
+      (func (;0;) (type 0) (param i64 i64) (result i64)
+        local.get 0
+        local.get 1
+        i64.div_s
+      )
+    )
+    ");
+}
+
+#[test]
+fn integer_modulo() {
+    assert_snapshot!(compile_to_wat("fn rem(a Int, b Int) Int { return a % b }"), @"
+    (module
+      (type (;0;) (func (param i64 i64) (result i64)))
+      (func (;0;) (type 0) (param i64 i64) (result i64)
+        local.get 0
+        local.get 1
+        i64.rem_s
+      )
+    )
+    ");
+}
+
+#[test]
+fn integer_negation() {
+    // Unary `-x` on an Int compiles to `i64.const 0; local.get x; i64.sub`.
+    assert_snapshot!(compile_to_wat("fn neg(x Int) Int { return -x }"), @"
+    (module
+      (type (;0;) (func (param i64) (result i64)))
+      (func (;0;) (type 0) (param i64) (result i64)
+        i64.const 0
+        local.get 0
+        i64.sub
+      )
+    )
+    ");
+}
+
+// ── Float arithmetic ──────────────────────────────────────────────────────────
+
+#[test]
+fn float_addition() {
+    assert_snapshot!(compile_to_wat("fn add(a Float, b Float) Float { return a + b }"), @"
+    (module
+      (type (;0;) (func (param f64 f64) (result f64)))
+      (func (;0;) (type 0) (param f64 f64) (result f64)
+        local.get 0
+        local.get 1
+        f64.add
+      )
+    )
+    ");
+}
+
+#[test]
+fn float_subtraction() {
+    assert_snapshot!(compile_to_wat("fn sub(a Float, b Float) Float { return a - b }"), @"
+    (module
+      (type (;0;) (func (param f64 f64) (result f64)))
+      (func (;0;) (type 0) (param f64 f64) (result f64)
+        local.get 0
+        local.get 1
+        f64.sub
+      )
+    )
+    ");
+}
+
+#[test]
+fn float_multiplication() {
+    assert_snapshot!(compile_to_wat("fn mul(a Float, b Float) Float { return a * b }"), @"
+    (module
+      (type (;0;) (func (param f64 f64) (result f64)))
+      (func (;0;) (type 0) (param f64 f64) (result f64)
+        local.get 0
+        local.get 1
+        f64.mul
+      )
+    )
+    ");
+}
+
+#[test]
+fn float_division() {
+    assert_snapshot!(compile_to_wat("fn div(a Float, b Float) Float { return a / b }"), @"
+    (module
+      (type (;0;) (func (param f64 f64) (result f64)))
+      (func (;0;) (type 0) (param f64 f64) (result f64)
+        local.get 0
+        local.get 1
+        f64.div
+      )
+    )
+    ");
+}
+
+#[test]
+fn float_negation() {
+    // Unary `-x` on a Float compiles directly to `f64.neg`.
+    assert_snapshot!(compile_to_wat("fn neg(x Float) Float { return -x }"), @"
+    (module
+      (type (;0;) (func (param f64) (result f64)))
+      (func (;0;) (type 0) (param f64) (result f64)
+        local.get 0
+        f64.neg
+      )
+    )
+    ");
+}
+
+// ── Integer comparisons ───────────────────────────────────────────────────────
+
+#[test]
+fn integer_equality() {
+    // Comparison operators produce Bool (i32), not Int.
+    assert_snapshot!(compile_to_wat("fn eq(a Int, b Int) Bool { return a == b }"), @"
+    (module
+      (type (;0;) (func (param i64 i64) (result i32)))
+      (func (;0;) (type 0) (param i64 i64) (result i32)
+        local.get 0
+        local.get 1
+        i64.eq
+      )
+    )
+    ");
+}
+
+#[test]
+fn integer_inequality() {
+    assert_snapshot!(compile_to_wat("fn ne(a Int, b Int) Bool { return a != b }"), @"
+    (module
+      (type (;0;) (func (param i64 i64) (result i32)))
+      (func (;0;) (type 0) (param i64 i64) (result i32)
+        local.get 0
+        local.get 1
+        i64.ne
+      )
+    )
+    ");
+}
+
+#[test]
+fn integer_less_than() {
+    assert_snapshot!(compile_to_wat("fn lt(a Int, b Int) Bool { return a < b }"), @"
+    (module
+      (type (;0;) (func (param i64 i64) (result i32)))
+      (func (;0;) (type 0) (param i64 i64) (result i32)
+        local.get 0
+        local.get 1
+        i64.lt_s
+      )
+    )
+    ");
+}
+
+#[test]
+fn integer_greater_than() {
+    assert_snapshot!(compile_to_wat("fn gt(a Int, b Int) Bool { return a > b }"), @"
+    (module
+      (type (;0;) (func (param i64 i64) (result i32)))
+      (func (;0;) (type 0) (param i64 i64) (result i32)
+        local.get 0
+        local.get 1
+        i64.gt_s
+      )
+    )
+    ");
+}
+
+// ── Float comparisons ─────────────────────────────────────────────────────────
+
+#[test]
+fn float_equality() {
+    assert_snapshot!(compile_to_wat("fn eq(a Float, b Float) Bool { return a == b }"), @"
+    (module
+      (type (;0;) (func (param f64 f64) (result i32)))
+      (func (;0;) (type 0) (param f64 f64) (result i32)
+        local.get 0
+        local.get 1
+        f64.eq
+      )
+    )
+    ");
+}
+
+#[test]
+fn float_less_than() {
+    assert_snapshot!(compile_to_wat("fn lt(a Float, b Float) Bool { return a < b }"), @"
+    (module
+      (type (;0;) (func (param f64 f64) (result i32)))
+      (func (;0;) (type 0) (param f64 f64) (result i32)
+        local.get 0
+        local.get 1
+        f64.lt
+      )
+    )
+    ");
+}
+
+// ── Local variables ───────────────────────────────────────────────────────────
+
+#[test]
+fn local_variable_declaration() {
+    // A `let` binding introduces an extra Wasm local; the initialiser is
+    // stored with `local.set` and retrieved with `local.get`.
+    let src = r#"
+        fn main() Int {
+            let x Int = 42
+            return x
+        }
+    "#;
+    assert_snapshot!(compile_to_wat(src), @"
+    (module
+      (type (;0;) (func (result i64)))
+      (func (;0;) (type 0) (result i64)
+        (local i64)
+        i64.const 42
+        local.set 0
+        local.get 0
+      )
+    )
+    ");
+}
+
+#[test]
+fn variable_reassignment() {
+    // Assignment (`x = …`) re-uses the same local slot as the declaration.
+    let src = r#"
+        fn main() Int {
+            let x Int = 1
+            x = 2
+            return x
+        }
+    "#;
+    assert_snapshot!(compile_to_wat(src), @"
+    (module
+      (type (;0;) (func (result i64)))
+      (func (;0;) (type 0) (result i64)
+        (local i64)
+        i64.const 1
+        local.set 0
+        i64.const 2
+        local.set 0
+        local.get 0
+      )
+    )
+    ");
+}
+
+#[test]
+fn params_and_locals_share_index_space() {
+    // Parameters occupy the first N local slots; `let` variables follow.
+    let src = r#"
+        fn bump(x Int) Int {
+            let y Int = 1
+            return x + y
+        }
+    "#;
+    assert_snapshot!(compile_to_wat(src), @"
+    (module
+      (type (;0;) (func (param i64) (result i64)))
+      (func (;0;) (type 0) (param i64) (result i64)
+        (local i64)
+        i64.const 1
+        local.set 1
+        local.get 0
+        local.get 1
+        i64.add
+      )
+    )
+    ");
+}
+
+// ── Function calls ────────────────────────────────────────────────────────────
+
+#[test]
+fn function_call() {
+    // The called function occupies type/func index 0; the caller is index 1.
+    let src = r#"
+        fn double(x Int) Int { return x + x }
+        fn main() Int { return double(5) }
+    "#;
+    assert_snapshot!(compile_to_wat(src), @"
+    (module
+      (type (;0;) (func (param i64) (result i64)))
+      (type (;1;) (func (result i64)))
+      (func (;0;) (type 0) (param i64) (result i64)
+        local.get 0
+        local.get 0
+        i64.add
+      )
+      (func (;1;) (type 1) (result i64)
+        i64.const 5
+        call 0
+      )
+    )
+    ");
+}
+
+// ── Export ────────────────────────────────────────────────────────────────────
+
+#[test]
+fn exported_function() {
+    // `export fn` adds an entry to the Wasm export section.
+    assert_snapshot!(compile_to_wat("export fn add(a Int, b Int) Int { return a + b }"), @r#"
+    (module
+      (type (;0;) (func (param i64 i64) (result i64)))
+      (export "add" (func 0))
+      (func (;0;) (type 0) (param i64 i64) (result i64)
+        local.get 0
+        local.get 1
+        i64.add
+      )
+    )
+    "#);
+}
+
+// ── Import ────────────────────────────────────────────────────────────────────
+
+#[test]
+fn imported_function() {
+    // `import fn` adds an entry to the Wasm import section under module "js".
+    assert_snapshot!(compile_to_wat("import fn add(a Int, b Int) Int"), @"
+    (module
+      (type (;0;) (func (param i64 i64) (result i64)))
+      (import \"js\" \"add\" (func (;0;) (type 0)))
+    )
+    ");
+}
+
+#[test]
+fn import_and_call() {
+    // Imports are assigned func indices before defined functions, so the
+    // import gets index 0 and the call instruction references it.
+    let src = r#"
+        import fn log(n Int)
+        fn main() { log(42) }
+    "#;
+    assert_snapshot!(compile_to_wat(src), @"
+    (module
+      (type (;0;) (func (param i64)))
+      (type (;1;) (func))
+      (import \"js\" \"log\" (func (;0;) (type 0)))
+      (func (;1;) (type 1)
+        i64.const 42
+        call 0
+      )
+    )
+    ");
 }
