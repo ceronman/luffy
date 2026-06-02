@@ -5,7 +5,7 @@ fn check(src: &str) -> String {
     match parser::parse(src) {
         Ok(module) => match semantic::semantic_analysis(&module) {
             Ok(_) => "<no error>".to_string(),
-            Err(err) => pretty::annotate_error_single(src, &err),
+            Err(e) => pretty::annotate_error_single(src, &e),
         },
         Err(e) => format!("PARSE ERROR: {}", pretty::annotate_error_single(src, &e)),
     }

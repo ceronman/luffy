@@ -1,5 +1,7 @@
+#[cfg(test)]
+mod test;
+
 use crate::ast::ItemKind;
-use crate::error::CompilerError;
 use crate::semantic::{Declaration, DeclarationId, DeclarationKind, Semantics, Type};
 use crate::{ast, ir};
 use std::collections::HashMap;
@@ -10,10 +12,8 @@ struct Compiler {
     semantics: Semantics,
 }
 
-pub type Result<T> = std::result::Result<T, CompilerError>;
-
 impl Compiler {
-    fn module(&mut self, module: &ast::Module) -> Result<ir::Module> {
+    fn module(&mut self, module: &ast::Module) -> ir::Module {
         let mut types = Vec::new();
         let mut imports = Vec::new();
         let mut functions = Vec::new();
@@ -24,7 +24,7 @@ impl Compiler {
                 let decl_id = self.declaration_id(name);
                 let func_idx = self.func_addresses.len() as ir::FuncIdx;
                 self.func_addresses.insert(decl_id, func_idx);
-                let ty = self.func_type(name)?;
+                let ty = self.func_type(name);
                 let ty_idx = types.len() as ir::TypeIdx;
                 types.push(ir::Type::Function(ty));
                 let import = ir::Import {
@@ -47,40 +47,37 @@ impl Compiler {
                 let decl_id = self.declaration_id(name);
                 let func_idx = self.func_addresses.len() as ir::FuncIdx;
                 self.func_addresses.insert(decl_id, func_idx);
-                let ty = self.func_type(name)?;
+                let ty = self.func_type(name);
                 let ty_idx = types.len() as ir::TypeIdx;
                 types.push(ir::Type::Function(ty));
-                let f = self.function(ty_idx, name, params, body)?;
+                let f = self.function(ty_idx, name, params, body);
                 functions.push(f);
                 if *export {
-                    let export = self.func_export(func_idx, name)?;
+                    let export = self.func_export(func_idx, name);
                     exports.push(export);
                 }
             }
         }
-        Ok(ir::Module {
+        ir::Module {
             types,
             imports,
             functions,
             exports,
-        })
+        }
     }
 
-    fn func_type(&self, name: &ast::Identifier) -> Result<ir::FuncType> {
+    fn func_type(&self, name: &ast::Identifier) -> ir::FuncType {
         let Type::Function { params, ret } = self.declaration_type(name) else {
             panic!("Function is not of type function")
         };
 
-        let params = params
-            .iter()
-            .map(|p| p.lower())
-            .collect::<Result<Vec<_>>>()?;
+        let params = params.iter().map(|p| p.lower()).collect::<Vec<_>>();
         let results = if let Type::Unit = ret.as_ref() {
             vec![]
         } else {
-            vec![ret.lower()?]
+            vec![ret.lower()]
         };
-        Ok(ir::FuncType { params, results })
+        ir::FuncType { params, results }
     }
 
     fn function(
@@ -89,29 +86,29 @@ impl Compiler {
         name: &ast::Identifier,
         params: &[ast::Param],
         body: &ast::Stmt,
-    ) -> Result<ir::Function> {
+    ) -> ir::Function {
         let func_id = self.declaration_id(name);
         let locals = self
             .function_locals(func_id)
             .skip(params.len())
             .map(|d| d.ty.lower())
-            .collect::<Result<Vec<ir::ValType>>>()?;
+            .collect::<Vec<ir::ValType>>();
         let mut ins = Vec::new();
-        self.stmt(&mut ins, body)?;
+        self.stmt(&mut ins, body);
         ins.push(ir::Instruction::End);
-        Ok(ir::Function {
+        ir::Function {
             ty,
             locals,
             body: ins,
-        })
+        }
     }
 
-    fn stmt(&self, ins: &mut Vec<ir::Instruction>, stmt: &ast::Stmt) -> Result<()> {
+    fn stmt(&self, ins: &mut Vec<ir::Instruction>, stmt: &ast::Stmt) {
         match &stmt.kind {
-            ast::StmtKind::ExprStmt { expr } => self.expr(ins, expr)?,
+            ast::StmtKind::ExprStmt { expr } => self.expr(ins, expr),
             ast::StmtKind::Block { statements } => {
                 for stmt in statements {
-                    self.stmt(ins, stmt)?;
+                    self.stmt(ins, stmt);
                 }
             }
             ast::StmtKind::Declaration {
@@ -119,7 +116,7 @@ impl Compiler {
                 initializer: value,
                 ..
             } => {
-                self.expr(ins, value)?;
+                self.expr(ins, value);
                 let address = self.local_addr(name);
                 ins.push(ir::Instruction::LocalSet(address));
             }
@@ -128,17 +125,16 @@ impl Compiler {
                     panic!("Invalid assignment target");
                 };
                 let adddress = self.local_addr(name);
-                self.expr(ins, value)?;
+                self.expr(ins, value);
                 ins.push(ir::Instruction::LocalSet(adddress));
             }
             ast::StmtKind::Return { expr } => {
-                self.expr(ins, expr)?;
+                self.expr(ins, expr);
             }
         }
-        Ok(())
     }
 
-    fn expr(&self, ins: &mut Vec<ir::Instruction>, expr: &ast::Expr) -> Result<()> {
+    fn expr(&self, ins: &mut Vec<ir::Instruction>, expr: &ast::Expr) {
         match &expr.kind {
             ast::ExprKind::Literal { kind } => match kind {
                 ast::LiteralKind::Int(value) => ins.push(ir::Instruction::I64Const(*value)),
@@ -154,19 +150,19 @@ impl Compiler {
                 match (&op.kind, ty) {
                     (ast::UnOpKind::Neg, Type::Int) => {
                         ins.push(ir::Instruction::I64Const(0));
-                        self.expr(ins, expr)?;
+                        self.expr(ins, expr);
                         ins.push(ir::Instruction::I64Sub);
                     }
                     (ast::UnOpKind::Neg, Type::Float) => {
-                        self.expr(ins, expr)?;
+                        self.expr(ins, expr);
                         ins.push(ir::Instruction::F64Neg);
                     }
                     _ => panic!("Unsupported unary operation"),
                 }
             }
             ast::ExprKind::Binary { op, left, right } => {
-                self.expr(ins, left)?;
-                self.expr(ins, right)?;
+                self.expr(ins, left);
+                self.expr(ins, right);
                 let ty = self.node_type(left.node);
                 match (&op.kind, ty) {
                     (ast::BinOpKind::Add, Type::Int) => ins.push(ir::Instruction::I64Add),
@@ -203,19 +199,18 @@ impl Compiler {
                 };
                 let address = self.func_addr(name);
                 for arg in args {
-                    self.expr(ins, arg)?;
+                    self.expr(ins, arg);
                 }
                 ins.push(ir::Instruction::Call(address));
             }
         }
-        Ok(())
     }
 
-    fn func_export(&self, func_idx: ir::FuncIdx, name: &ast::Identifier) -> Result<ir::Export> {
-        Ok(ir::Export {
+    fn func_export(&self, func_idx: ir::FuncIdx, name: &ast::Identifier) -> ir::Export {
+        ir::Export {
             name: name.symbol.to_string(),
             kind: ir::ExportKind::Function(func_idx),
-        })
+        }
     }
 
     fn calculate_addresses(&mut self) {
@@ -292,18 +287,17 @@ impl Compiler {
 }
 
 impl Type {
-    fn lower(&self) -> Result<ir::ValType> {
-        let ty = match self {
+    fn lower(&self) -> ir::ValType {
+        match self {
             Type::Int => ir::ValType::I64,
             Type::Float => ir::ValType::F64,
             Type::Bool => ir::ValType::I32,
             _ => todo!(),
-        };
-        Ok(ty)
+        }
     }
 }
 
-pub fn compile(module: &ast::Module, semantics: Semantics) -> Result<ir::Module> {
+pub fn compile(module: &ast::Module, semantics: Semantics) -> ir::Module {
     let mut compiler = Compiler {
         semantics,
         local_addresses: Default::default(),

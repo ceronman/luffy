@@ -35,13 +35,7 @@ fn main() {
         }
     };
 
-    let module = match compiler::compile(&module, semantics) {
-        Ok(module) => module,
-        Err(err) => {
-            eprintln!("Error:\n{}", pretty::annotate_error(code, &err));
-            return;
-        }
-    };
+    let module = compiler::compile(&module, semantics);
     let wasm = emit::emit(module);
     let wat = wasmprinter::print_bytes(&wasm).expect("Failed to print Wasm binary");
     println!("Running:\n{}", wat);
