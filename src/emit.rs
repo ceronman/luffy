@@ -1,3 +1,6 @@
+#[cfg(test)]
+mod test;
+
 use crate::ir;
 use wasm_encoder::{
     CodeSection, EntityType, ExportKind, ExportSection, Function, FunctionSection, ImportSection,
@@ -111,6 +114,14 @@ pub fn run(binary: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
     let module = wasmtime::Module::from_binary(&engine, binary)?;
     let mut store = wasmtime::Store::new(&engine, ());
     let mut linker = wasmtime::Linker::new(&engine);
+
+    linker.func_wrap(
+        "js",
+        "print_int",
+        |_caller: wasmtime::Caller<'_, ()>, i: i64| {
+            println!("{i}");
+        },
+    )?;
 
     linker.func_wrap(
         "js",
