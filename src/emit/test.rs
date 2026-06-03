@@ -108,3 +108,136 @@ fn int_operators() {
     20
     ");
 }
+
+#[test]
+fn float_operators() {
+    // Whole-number float results (e.g. 3.0) are printed without a decimal point.
+    let src = r#"
+        print_float(1.0 + 1.5)
+        print_float(3.5 - 1.5)
+        print_float(1.5 * 2.0)
+        print_float(7.0 / 2.0)
+        print_float(1.0 + 2.0 * 1.5)
+        print_float((1.0 + 2.0) * 1.5)
+    "#;
+    assert_snapshot!(run_main(src), @"
+    2.5
+    2
+    3
+    3.5
+    4
+    4.5
+    ");
+}
+
+#[test]
+fn negation() {
+    // Integer negation compiles to `0 - x`; float negation uses `f64.neg`.
+    let src = r#"
+        print_int(-5)
+        print_int(-100)
+        print_float(-1.5)
+        print_float(-2.5)
+    "#;
+    assert_snapshot!(run_main(src), @"
+    -5
+    -100
+    -1.5
+    -2.5
+    ");
+}
+
+#[test]
+fn int_comparisons() {
+    // Each of the six comparison operators is exercised with both a true and a
+    // false case, alternating to make the output easy to scan.
+    let src = r#"
+        print_bool(1 == 1)
+        print_bool(1 == 2)
+        print_bool(1 != 2)
+        print_bool(2 != 2)
+        print_bool(1 < 2)
+        print_bool(2 <= 1)
+        print_bool(2 > 1)
+        print_bool(1 >= 2)
+    "#;
+    assert_snapshot!(run_main(src), @"
+    true
+    false
+    true
+    false
+    true
+    false
+    true
+    false
+    ");
+}
+
+#[test]
+fn float_comparisons() {
+    let src = r#"
+        print_bool(1.5 == 1.5)
+        print_bool(1.5 == 2.5)
+        print_bool(1.5 != 2.5)
+        print_bool(1.5 < 2.5)
+        print_bool(2.5 <= 1.5)
+        print_bool(2.5 > 1.5)
+        print_bool(1.5 >= 2.5)
+    "#;
+    assert_snapshot!(run_main(src), @"
+    true
+    false
+    true
+    true
+    false
+    true
+    false
+    ");
+}
+
+#[test]
+fn variables() {
+    // Covers: declaration of all three types, use in an expression, and
+    // reassignment (which should overwrite the same local slot).
+    let src = r#"
+        let x Int = 10
+        print_int(x)
+        let y Float = 2.5
+        print_float(y)
+        let flag Bool = false
+        print_bool(flag)
+        let a Int = 3
+        let b Int = 4
+        print_int(a + b)
+        x = 42
+        print_int(x)
+    "#;
+    assert_snapshot!(run_main(src), @"
+    10
+    2.5
+    false
+    7
+    42
+    ");
+}
+
+#[test]
+fn function_calls() {
+    // compile_and_run is used here (instead of run_main) so that helper
+    // functions can be defined alongside main.
+    let src = r#"
+        import fn print_int(x Int)
+        fn add(a Int, b Int) Int { return a + b }
+        fn square(x Int) Int { return x * x }
+        export fn main() {
+            print_int(add(3, 4))
+            print_int(square(5))
+            print_int(add(square(2), square(3)))
+        }
+    "#;
+    assert_snapshot!(compile_and_run(src), @"
+    7
+    25
+    13
+    ");
+}
