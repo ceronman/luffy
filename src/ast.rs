@@ -157,4 +157,6 @@ pub enum BinOpKind {
     Le,
     Gt,
     Ge,
+    And,
+    Or,
 }

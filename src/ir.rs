@@ -31,8 +31,16 @@ pub struct Function {
     pub body: Vec<Instruction>,
 }
 
+pub enum BlockType {
+    Empty,
+    Result(ValType),
+    FunctionType(FuncIdx),
+}
+
 pub enum Instruction {
     I32Const(i32),
+    If(BlockType),
+    Else,
 
     I64Const(i64),
     I64Add,

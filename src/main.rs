@@ -12,7 +12,18 @@ fn main() {
     let code = r#"
         import fn print_int(x Int)
         export fn main() {
+            let x Bool = foo() and bar()
+            let y Bool = bar() and foo()
+        }
+
+        fn foo() Bool {
             print_int(256)
+            return true
+        }
+
+        fn bar() Bool {
+            print_int(1)
+            return false
         }
     "#;
 

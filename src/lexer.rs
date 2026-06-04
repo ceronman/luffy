@@ -19,6 +19,9 @@ pub enum TokenKind {
     Less,
     LessEqual,
 
+    And,
+    Or,
+
     Equal,
     Bang,
 
@@ -247,6 +250,8 @@ impl<'src> Lexer<'src> {
             "return" => TokenKind::Return,
             "import" => TokenKind::Import,
             "export" => TokenKind::Export,
+            "and" => TokenKind::And,
+            "or" => TokenKind::Or,
             _ => TokenKind::Identifier,
         }
     }
@@ -286,6 +291,8 @@ impl Display for TokenKind {
             TokenKind::LessEqual => "`<=`",
             TokenKind::Equal => "`=`",
             TokenKind::Bang => "`!`",
+            TokenKind::And => "`and`",
+            TokenKind::Or => "`or`",
             TokenKind::LParen => "`(`",
             TokenKind::RParen => "`)`",
             TokenKind::LBrace => "`{`",

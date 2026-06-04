@@ -20,19 +20,26 @@ impl Compiler {
         let mut exports = Vec::new();
 
         for item in &module.items {
-            if let ItemKind::Import { name, .. } = &item.kind {
-                let decl_id = self.declaration_id(name);
-                let func_idx = self.func_addresses.len() as ir::FuncIdx;
-                self.func_addresses.insert(decl_id, func_idx);
-                let ty = self.func_type(name);
-                let ty_idx = types.len() as ir::TypeIdx;
-                types.push(ir::Type::Function(ty));
-                let import = ir::Import {
-                    module: "js".to_string(),
-                    name: name.symbol.clone(),
-                    func_type: ty_idx,
-                };
-                imports.push(import);
+            match &item.kind {
+                ItemKind::Import { name, .. } => {
+                    let decl_id = self.declaration_id(name);
+                    let func_idx = self.func_addresses.len() as ir::FuncIdx;
+                    self.func_addresses.insert(decl_id, func_idx);
+                    let ty = self.func_type(name);
+                    let ty_idx = types.len() as ir::TypeIdx;
+                    types.push(ir::Type::Function(ty));
+                    let import = ir::Import {
+                        module: "js".to_string(),
+                        name: name.symbol.clone(),
+                        func_type: ty_idx,
+                    };
+                    imports.push(import);
+                }
+                ItemKind::Function { name, .. } => {
+                    let decl_id = self.declaration_id(name);
+                    let func_idx = self.func_addresses.len() as ir::FuncIdx;
+                    self.func_addresses.insert(decl_id, func_idx);
+                }
             }
         }
         for item in &module.items {
@@ -45,8 +52,10 @@ impl Compiler {
             } = &item.kind
             {
                 let decl_id = self.declaration_id(name);
-                let func_idx = self.func_addresses.len() as ir::FuncIdx;
-                self.func_addresses.insert(decl_id, func_idx);
+                let func_idx = *self
+                    .func_addresses
+                    .get(&decl_id)
+                    .expect("function declaration not found");
                 let ty = self.func_type(name);
                 let ty_idx = types.len() as ir::TypeIdx;
                 types.push(ir::Type::Function(ty));
@@ -95,6 +104,7 @@ impl Compiler {
             .collect::<Vec<ir::ValType>>();
         let mut ins = Vec::new();
         self.stmt(&mut ins, body);
+        // TODO: Functions returning unit should pop the stack
         ins.push(ir::Instruction::End);
         ir::Function {
             ty,
@@ -161,6 +171,27 @@ impl Compiler {
                 }
             }
             ast::ExprKind::Binary { op, left, right } => {
+                match &op.kind {
+                    ast::BinOpKind::And => {
+                        self.expr(ins, left);
+                        ins.push(ir::Instruction::If(ir::BlockType::Result(ir::ValType::I32)));
+                        self.expr(ins, right);
+                        ins.push(ir::Instruction::Else);
+                        ins.push(ir::Instruction::I32Const(0));
+                        ins.push(ir::Instruction::End);
+                        return;
+                    }
+                    ast::BinOpKind::Or => {
+                        self.expr(ins, left);
+                        ins.push(ir::Instruction::If(ir::BlockType::Result(ir::ValType::I32)));
+                        ins.push(ir::Instruction::I32Const(1));
+                        ins.push(ir::Instruction::Else);
+                        self.expr(ins, right);
+                        ins.push(ir::Instruction::End);
+                        return;
+                    }
+                    _ => {}
+                };
                 self.expr(ins, left);
                 self.expr(ins, right);
                 let ty = self.node_type(left.node);

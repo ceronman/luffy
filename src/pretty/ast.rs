@@ -194,6 +194,8 @@ impl PrettyAst {
             BinOpKind::Le => "<=",
             BinOpKind::Gt => ">",
             BinOpKind::Ge => ">=",
+            BinOpKind::And => "and",
+            BinOpKind::Or => "or",
         }
     }
 

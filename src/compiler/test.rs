@@ -402,6 +402,29 @@ fn function_call() {
     ");
 }
 
+#[test]
+fn function_call_not_yet_declared() {
+    let src = r#"
+        fn main() Int { return double(5) }
+        fn double(x Int) Int { return x + x }
+    "#;
+    assert_snapshot!(compile_to_wat(src), @"
+    (module
+      (type (;0;) (func (result i64)))
+      (type (;1;) (func (param i64) (result i64)))
+      (func (;0;) (type 0) (result i64)
+        i64.const 5
+        call 1
+      )
+      (func (;1;) (type 1) (param i64) (result i64)
+        local.get 0
+        local.get 0
+        i64.add
+      )
+    )
+    ");
+}
+
 // ── Export ────────────────────────────────────────────────────────────────────
 
 #[test]

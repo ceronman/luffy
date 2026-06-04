@@ -3,8 +3,8 @@ mod test;
 
 use crate::ir;
 use wasm_encoder::{
-    CodeSection, EntityType, ExportKind, ExportSection, Function, FunctionSection, ImportSection,
-    Instruction, Module, TypeSection, ValType,
+    BlockType, CodeSection, EntityType, ExportKind, ExportSection, Function, FunctionSection,
+    ImportSection, Instruction, Module, TypeSection, ValType,
 };
 
 pub fn emit(module: ir::Module) -> Vec<u8> {
@@ -70,12 +70,21 @@ impl ir::ValType {
     }
 }
 
+impl ir::BlockType {
+    fn encode(&self) -> BlockType {
+        match self {
+            ir::BlockType::Empty => BlockType::Empty,
+            ir::BlockType::Result(v) => BlockType::Result(v.encode()),
+            ir::BlockType::FunctionType(idx) => BlockType::FunctionType(*idx),
+        }
+    }
+}
+
 impl ir::Instruction {
     fn encode(&self) -> Instruction<'_> {
         match self {
             ir::Instruction::LocalGet(idx) => Instruction::LocalGet(*idx),
             ir::Instruction::LocalSet(idx) => Instruction::LocalSet(*idx),
-            ir::Instruction::I32Const(v) => Instruction::I32Const(*v),
 
             ir::Instruction::I64Const(v) => Instruction::I64Const(*v),
             ir::Instruction::I64Add => Instruction::I64Add,
@@ -103,6 +112,9 @@ impl ir::Instruction {
             ir::Instruction::F64Le => Instruction::F64Le,
             ir::Instruction::F64Lt => Instruction::F64Lt,
 
+            ir::Instruction::I32Const(v) => Instruction::I32Const(*v),
+            ir::Instruction::If(block_type) => Instruction::If(block_type.encode()),
+            ir::Instruction::Else => Instruction::Else,
             ir::Instruction::Call(func_idx) => Instruction::Call(*func_idx),
             ir::Instruction::End => Instruction::End,
         }
@@ -125,8 +137,17 @@ pub fn run(binary: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
 
     linker.func_wrap(
         "js",
-        "print_int",
-        |_caller: wasmtime::Caller<'_, ()>, i: i64| {
+        "print_float",
+        |_caller: wasmtime::Caller<'_, ()>, i: f64| {
+            println!("{i}");
+        },
+    )?;
+
+    linker.func_wrap(
+        "js",
+        "print_bool",
+        |_caller: wasmtime::Caller<'_, ()>, i: i32| {
+            let i = i != 0;
             println!("{i}");
         },
     )?;

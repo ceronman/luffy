@@ -40,6 +40,9 @@ impl Type {
     fn is_int(&self) -> bool {
         matches!(self, Type::Int)
     }
+    fn is_bool(&self) -> bool {
+        matches!(self, Type::Bool)
+    }
 }
 
 impl Display for Type {
@@ -248,6 +251,16 @@ impl Resolver {
                             return type_err(
                                 left.node.span,
                                 "Operator requires numeric type".to_string(),
+                            );
+                        }
+                        Type::Bool
+                    }
+
+                    BinOpKind::And | BinOpKind::Or => {
+                        if !left_ty.is_bool() {
+                            return type_err(
+                                left.node.span,
+                                "Logical operator requires boolean type".to_string(),
                             );
                         }
                         Type::Bool

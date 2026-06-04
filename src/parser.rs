@@ -286,6 +286,8 @@ impl<'src> Parser<'src> {
             TokenKind::LessEqual => BinOpKind::Le,
             TokenKind::Greater => BinOpKind::Gt,
             TokenKind::GreaterEqual => BinOpKind::Ge,
+            TokenKind::And => BinOpKind::And,
+            TokenKind::Or => BinOpKind::Or,
             _ => return error(op.span, "Invalid binary operator {op:?}"),
         };
         self.advance();
@@ -328,6 +330,8 @@ impl<'src> Parser<'src> {
             Greater | GreaterEqual
             | Less | LessEqual      => Some(4),
             EqualEqual | BangEqual  => Some(3),
+            And                     => Some(2),
+            Or                      => Some(1),
             _                       => None
         }
     }
