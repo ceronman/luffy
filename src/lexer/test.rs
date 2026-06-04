@@ -38,6 +38,14 @@ fn import_export_keywords() {
 }
 
 #[test]
+fn logical_keywords() {
+    assert_snapshot!(
+        tokens("and or"),
+        @"[ `and`  `or` ]"
+    );
+}
+
+#[test]
 fn identifiers() {
     assert_snapshot!(
         tokens("one two three foo bar"),

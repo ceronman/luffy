@@ -352,3 +352,49 @@ fn error_call_imported_function_wrong_arg_type() {
                                   ^^^^ ─── Type mismatch: expected 'Int', found 'Bool'
     ");
 }
+
+// ── Logical operator tests ────────────────────────────────────────────────────
+
+#[test]
+fn valid_logical_and() {
+    assert_snapshot!(check("fn f(a Bool, b Bool) Bool { return a and b }"), @"<no error>");
+}
+
+#[test]
+fn valid_logical_or() {
+    assert_snapshot!(check("fn f(a Bool, b Bool) Bool { return a or b }"), @"<no error>");
+}
+
+#[test]
+fn valid_logical_combined_with_comparisons() {
+    // Comparisons produce Bool, which is then fed into `and` / `or`.
+    assert_snapshot!(check("fn f(a Int, b Int) Bool { return a < b and a != b }"), @"<no error>");
+}
+
+#[test]
+fn error_logical_and_non_bool_type() {
+    // Both operands are Int — same type, so check_ty_match passes, but then
+    // the is_bool guard fires on the left operand's span.
+    assert_snapshot!(check("fn main() { return 1 and 1 }"), @r"
+    fn main() { return 1 and 1 }
+                       ^ ─── Logical operator requires boolean type
+    ");
+}
+
+#[test]
+fn error_logical_or_non_bool_type() {
+    assert_snapshot!(check("fn main() { return 1 or 1 }"), @r"
+    fn main() { return 1 or 1 }
+                       ^ ─── Logical operator requires boolean type
+    ");
+}
+
+#[test]
+fn error_logical_type_mismatch() {
+    // The right operand is Int while the left is Bool — check_ty_match fires
+    // on the right operand's span before the is_bool guard is even reached.
+    assert_snapshot!(check("fn main() { return true and 1 }"), @"
+    fn main() { return true and 1 }
+                                ^ ─── Type mismatch: expected 'Bool', found 'Int'
+    ");
+}

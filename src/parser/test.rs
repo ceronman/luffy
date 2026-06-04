@@ -709,3 +709,62 @@ fn error_missing_fn_after_export() {
            ^^^ ─── Expected `fn`, got <Identifier>
     ");
 }
+
+// ── Logical operator tests ────────────────────────────────────────────────────
+
+#[test]
+fn logical_and() {
+    assert_snapshot!(parse_expr("a and b"), @r"
+    Binary [and]
+    ├── Var [a]
+    └── Var [b]
+    ");
+}
+
+#[test]
+fn logical_or() {
+    assert_snapshot!(parse_expr("a or b"), @r"
+    Binary [or]
+    ├── Var [a]
+    └── Var [b]
+    ");
+}
+
+#[test]
+fn precedence_and_over_or() {
+    // `and` (precedence 2) binds tighter than `or` (precedence 1),
+    // so `a or b and c` parses as `a or (b and c)`.
+    assert_snapshot!(parse_expr("a or b and c"), @r"
+    Binary [or]
+    ├── Var [a]
+    └── Binary [and]
+        ├── Var [b]
+        └── Var [c]
+    ");
+}
+
+#[test]
+fn precedence_comparisons_over_logical() {
+    // Comparison operators (precedence 3-4) bind tighter than `and` (2),
+    // so `a == b and c != d` parses as `(a == b) and (c != d)`.
+    assert_snapshot!(parse_expr("a == b and c != d"), @r"
+    Binary [and]
+    ├── Binary [==]
+    │   ├── Var [a]
+    │   └── Var [b]
+    └── Binary [!=]
+        ├── Var [c]
+        └── Var [d]
+    ");
+}
+
+#[test]
+fn logical_and_is_left_associative() {
+    assert_snapshot!(parse_expr("a and b and c"), @r"
+    Binary [and]
+    ├── Binary [and]
+    │   ├── Var [a]
+    │   └── Var [b]
+    └── Var [c]
+    ");
+}

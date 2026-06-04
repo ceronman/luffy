@@ -222,6 +222,62 @@ fn variables() {
 }
 
 #[test]
+fn logical_operators() {
+    // Full truth table for `and` and `or`.
+    let src = r#"
+        print_bool(true and true)
+        print_bool(true and false)
+        print_bool(false and true)
+        print_bool(false and false)
+        print_bool(false or false)
+        print_bool(false or true)
+        print_bool(true or false)
+        print_bool(true or true)
+    "#;
+    assert_snapshot!(run_main(src), @"
+    true
+    false
+    false
+    false
+    false
+    true
+    true
+    true
+    ");
+}
+
+#[test]
+fn logical_short_circuit() {
+    // When the result is determined by the left operand, the right operand
+    // must NOT be evaluated.  `side_effect` prints its argument as a side
+    // effect, so any call that should be skipped would leave a stray number
+    // in the output.
+    let src = r#"
+        import fn print_int(x Int)
+        import fn print_bool(x Bool)
+        fn side_effect(n Int) Bool {
+            print_int(n)
+            return true
+        }
+        export fn main() {
+            print_bool(false and side_effect(1))
+            print_bool(true or side_effect(2))
+            print_bool(true and side_effect(3))
+            print_bool(false or side_effect(4))
+        }
+    "#;
+    // 1 and 2 are NOT printed (short-circuited); 3 and 4 ARE printed.
+    assert_snapshot!(compile_and_run(src), @"
+    false
+    true
+    3
+    true
+    4
+    true
+    ");
+}
+
+#[test]
 fn function_calls() {
     // compile_and_run is used here (instead of run_main) so that helper
     // functions can be defined alongside main.
