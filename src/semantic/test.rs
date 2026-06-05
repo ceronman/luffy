@@ -211,7 +211,16 @@ fn error_assignment_type_mismatch() {
     ");
 }
 
-// ── Type errors: binary operators ────────────────────────────────────────────
+// ── Type errors: operators ────────────────────────────────────────────
+
+#[test]
+fn error_unary_operand_type_mismatch() {
+    // Right operand has a different type from the left.
+    assert_snapshot!(check("fn main() { -true }"), @"
+    fn main() { -true }
+                 ^^^^ ─── Operator requires numeric type
+    ");
+}
 
 #[test]
 fn error_binary_operand_type_mismatch() {
@@ -396,5 +405,29 @@ fn error_logical_type_mismatch() {
     assert_snapshot!(check("fn main() { return true and 1 }"), @"
     fn main() { return true and 1 }
                                 ^ ─── Type mismatch: expected 'Bool', found 'Int'
+    ");
+}
+
+// ── not operator tests ────────────────────────────────────────────────────────
+
+#[test]
+fn valid_not_operator() {
+    assert_snapshot!(check("fn f(a Bool) Bool { return not a }"), @"<no error>");
+}
+
+#[test]
+fn error_not_on_int() {
+    // `not` requires a Bool operand; the error span points at the operand.
+    assert_snapshot!(check("fn main() { return not 1 }"), @r"
+    fn main() { return not 1 }
+                           ^ ─── Operator requires boolean type
+    ");
+}
+
+#[test]
+fn error_not_on_float() {
+    assert_snapshot!(check("fn main() { return not 1.5 }"), @r"
+    fn main() { return not 1.5 }
+                           ^^^ ─── Operator requires boolean type
     ");
 }

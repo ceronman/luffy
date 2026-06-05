@@ -768,3 +768,68 @@ fn logical_and_is_left_associative() {
     └── Var [c]
     ");
 }
+
+#[test]
+fn not_operator() {
+    assert_snapshot!(parse_expr("not a"), @r"
+    Unary [not]
+    └── Var [a]
+    ");
+}
+
+#[test]
+fn not_binds_tighter_than_and() {
+    // `not` has prefix precedence 7, `and` has infix precedence 2, so
+    // `not a and b` parses as `(not a) and b`, not `not (a and b)`.
+    assert_snapshot!(parse_expr("not a and b"), @r"
+    Binary [and]
+    ├── Unary [not]
+    │   └── Var [a]
+    └── Var [b]
+    ");
+}
+
+#[test]
+fn not_binds_tighter_than_or() {
+    // Same reasoning as `and`: `not a or b` is `(not a) or b`.
+    assert_snapshot!(parse_expr("not a or b"), @r"
+    Binary [or]
+    ├── Unary [not]
+    │   └── Var [a]
+    └── Var [b]
+    ");
+}
+
+#[test]
+fn not_binds_tighter_than_comparison() {
+    // `not` prefix precedence (7) is higher than `==` infix precedence (3),
+    // so `not a == b` is `(not a) == b`.
+    assert_snapshot!(parse_expr("not a == b"), @r"
+    Binary [==]
+    ├── Unary [not]
+    │   └── Var [a]
+    └── Var [b]
+    ");
+}
+
+#[test]
+fn not_grouping_overrides_precedence() {
+    // Parentheses force `not` to apply to the whole sub-expression.
+    assert_snapshot!(parse_expr("not (a and b)"), @r"
+    Unary [not]
+    └── Binary [and]
+        ├── Var [a]
+        └── Var [b]
+    ");
+}
+
+#[test]
+fn double_not() {
+    // `not not a` parses as `not (not a)` — each `not` takes the
+    // immediately following atom as its operand.
+    assert_snapshot!(parse_expr("not not a"), @r"
+    Unary [not]
+    └── Unary [not]
+        └── Var [a]
+    ");
+}

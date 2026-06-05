@@ -110,6 +110,31 @@ fn int_operators() {
 }
 
 #[test]
+fn not_operator() {
+    // Covers basic behaviour and shows that `not` has higher prefix precedence
+    // than `and`/`or` — e.g. `not true or false` is `(not true) or false`,
+    // not `not (true or false)`.
+    let src = r#"
+        print_bool(not true)
+        print_bool(not false)
+        print_bool(not (1 == 2))
+        print_bool(not (1 == 1))
+        print_bool(not true or false)
+        print_bool(not (true or false))
+        print_bool(not true and not false)
+    "#;
+    assert_snapshot!(run_main(src), @"
+    false
+    true
+    true
+    false
+    false
+    false
+    false
+    ");
+}
+
+#[test]
 fn float_operators() {
     // Whole-number float results (e.g. 3.0) are printed without a decimal point.
     let src = r#"
