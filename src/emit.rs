@@ -113,6 +113,7 @@ impl ir::Instruction {
             ir::Instruction::F64Lt => Instruction::F64Lt,
 
             ir::Instruction::I32Const(v) => Instruction::I32Const(*v),
+            ir::Instruction::I32Eqz => Instruction::I32Eqz,
             ir::Instruction::If(block_type) => Instruction::If(block_type.encode()),
             ir::Instruction::Else => Instruction::Else,
             ir::Instruction::Call(func_idx) => Instruction::Call(*func_idx),

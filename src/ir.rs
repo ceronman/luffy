@@ -39,6 +39,7 @@ pub enum BlockType {
 
 pub enum Instruction {
     I32Const(i32),
+    I32Eqz,
     If(BlockType),
     Else,
 

@@ -191,7 +191,7 @@ impl<'src> Parser<'src> {
                 self.literal()?
             }
             TokenKind::Identifier => self.variable()?,
-            TokenKind::Minus => self.unary_expr()?,
+            TokenKind::Not | TokenKind::Minus => self.unary_expr()?,
 
             other_kind => {
                 return error(self.current.span, format!("Unexpected {}", other_kind));
@@ -288,7 +288,7 @@ impl<'src> Parser<'src> {
             TokenKind::GreaterEqual => BinOpKind::Ge,
             TokenKind::And => BinOpKind::And,
             TokenKind::Or => BinOpKind::Or,
-            _ => return error(op.span, "Invalid binary operator {op:?}"),
+            _ => return error(op.span, format!("Invalid binary operator {}", op.kind)),
         };
         self.advance();
         Ok(BinOp {
@@ -301,7 +301,8 @@ impl<'src> Parser<'src> {
         let op = self.current;
         let kind = match op.kind {
             TokenKind::Minus => UnOpKind::Neg,
-            _ => return error(op.span, "Invalid unary operator {op:?}"),
+            TokenKind::Not => UnOpKind::Not,
+            _ => return error(op.span, format!("Invalid unary operator {}", op.kind)),
         };
         self.advance();
         Ok(UnOp {
@@ -314,7 +315,7 @@ impl<'src> Parser<'src> {
     fn prefix_precedence(&self) -> Option<u8> {
         use TokenKind::*;
         match self.current.kind {
-            Minus                   => Some(7),
+            Not | Minus             => Some(7),
             _                       => None
         }
     }

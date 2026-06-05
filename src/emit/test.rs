@@ -58,7 +58,7 @@ fn compile_and_run(src: &str) -> String {
             }
             Err(e) => pretty::annotate_error_single(src, &e),
         },
-        Err(e) => format!("PARSE ERROR: {}", pretty::annotate_error_single(src, &e)),
+        Err(e) => pretty::annotate_error_single(src, &e),
     }
 }
 

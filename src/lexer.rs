@@ -21,6 +21,7 @@ pub enum TokenKind {
 
     And,
     Or,
+    Not,
 
     Equal,
     Bang,
@@ -252,6 +253,7 @@ impl<'src> Lexer<'src> {
             "export" => TokenKind::Export,
             "and" => TokenKind::And,
             "or" => TokenKind::Or,
+            "not" => TokenKind::Not,
             _ => TokenKind::Identifier,
         }
     }
@@ -293,6 +295,7 @@ impl Display for TokenKind {
             TokenKind::Bang => "`!`",
             TokenKind::And => "`and`",
             TokenKind::Or => "`or`",
+            TokenKind::Not => "`not`",
             TokenKind::LParen => "`(`",
             TokenKind::RParen => "`)`",
             TokenKind::LBrace => "`{`",

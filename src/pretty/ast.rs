@@ -202,6 +202,7 @@ impl PrettyAst {
     fn unary_op(op: &UnOpKind) -> &str {
         match op {
             UnOpKind::Neg => "-",
+            UnOpKind::Not => "not",
         }
     }
 }

@@ -136,6 +136,7 @@ pub struct UnOp {
 #[derive(Debug)]
 pub enum UnOpKind {
     Neg,
+    Not,
 }
 
 #[derive(Debug)]

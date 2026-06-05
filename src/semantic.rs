@@ -3,7 +3,7 @@ mod test;
 
 use crate::ast::{
     BinOpKind, Expr, ExprKind, Identifier, ItemKind, LiteralKind, Module, NodeId, Param, Stmt,
-    StmtKind, Symbol, TypeKind, TypeRef,
+    StmtKind, Symbol, TypeKind, TypeRef, UnOpKind,
 };
 use crate::error::{CompilerError, ErrorKind};
 use crate::lexer::Span;
@@ -218,7 +218,28 @@ impl Resolver {
                 self.semantics.uses.insert(name.node.id, decl_id);
                 self.lookup_ty(name)?
             }
-            ExprKind::Unary { expr, .. } => self.expr(expr)?,
+            ExprKind::Unary { expr, op } => {
+                let expr_ty = self.expr(expr)?;
+                match op.kind {
+                    UnOpKind::Neg => {
+                        if !expr_ty.is_numeric() {
+                            return type_err(
+                                expr.node.span,
+                                "Operator requires numeric type".to_string(),
+                            );
+                        }
+                    }
+                    UnOpKind::Not => {
+                        if !expr_ty.is_bool() {
+                            return type_err(
+                                expr.node.span,
+                                "Operator requires boolean type".to_string(),
+                            );
+                        }
+                    }
+                }
+                expr_ty
+            }
             ExprKind::Binary { op, left, right } => {
                 let left_ty = self.expr(left)?;
                 let right_ty = self.expr(right)?;

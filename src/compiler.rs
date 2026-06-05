@@ -167,6 +167,10 @@ impl Compiler {
                         self.expr(ins, expr);
                         ins.push(ir::Instruction::F64Neg);
                     }
+                    (ast::UnOpKind::Not, Type::Bool) => {
+                        self.expr(ins, expr);
+                        ins.push(ir::Instruction::I32Eqz);
+                    }
                     _ => panic!("Unsupported unary operation"),
                 }
             }
