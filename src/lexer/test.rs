@@ -56,8 +56,8 @@ fn identifiers() {
 #[test]
 fn punctuations() {
     assert_snapshot!(
-        tokens("... ,,,"),
-        @"[ `.`  `.`  `.`  `,`  `,`  `,` ]"
+        tokens("... ,,, :"),
+        @"[ `.`  `.`  `.`  `,`  `,`  `,`  `:` ]"
     );
 }
 

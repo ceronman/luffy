@@ -34,7 +34,7 @@ pub enum ItemKind {
         name: Identifier,
         params: Vec<Param>,
         return_ty: Option<TypeRef>,
-        body: Stmt,
+        body: Block,
     },
     Import {
         name: Identifier,
@@ -61,6 +61,18 @@ pub struct Param {
     pub node: Node,
     pub name: Identifier,
     pub ty: TypeRef,
+}
+
+#[derive(Debug)]
+pub struct Block {
+    pub node: Node,
+    pub kind: BlockKind,
+}
+
+#[derive(Debug)]
+pub enum BlockKind {
+    Braces { statements: Vec<Stmt> },
+    Expr { expr: Expr },
 }
 
 #[derive(Debug)]

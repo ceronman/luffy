@@ -3,8 +3,8 @@ mod test;
 
 use crate::ast::StmtKind::{Assignment, ExprStmt};
 use crate::ast::{
-    BinOp, BinOpKind, Expr, ExprKind, Identifier, Item, ItemKind, LiteralKind, Module, Node, Param,
-    Stmt, StmtKind, TypeKind, TypeRef, UnOp, UnOpKind,
+    BinOp, BinOpKind, Block, BlockKind, Expr, ExprKind, Identifier, Item, ItemKind, LiteralKind,
+    Module, Node, Param, Stmt, StmtKind, TypeKind, TypeRef, UnOp, UnOpKind,
 };
 use crate::error::{CompilerError, ErrorKind};
 use crate::lexer::{Lexer, Span, Token, TokenKind};
@@ -87,7 +87,7 @@ impl<'src> Parser<'src> {
         } else {
             None
         };
-        let body = self.statement()?;
+        let body = self.function_body()?;
         Ok(Item {
             node: self.node(begin, body.node.span),
             kind: ItemKind::Function {
@@ -435,6 +435,49 @@ impl<'src> Parser<'src> {
                 ty,
                 initializer,
             },
+        })
+    }
+
+    fn function_body(&mut self) -> Result<Block> {
+        self.maybe_eol();
+        match self.current.kind {
+            TokenKind::LBrace => self.braces_block(),
+            TokenKind::Colon => self.expr_block(),
+            _ => error(
+                self.current.span,
+                format!(
+                    "Expected `{{` or `:` for function body, found {} instead",
+                    self.current.kind
+                ),
+            ),
+        }
+    }
+
+    fn braces_block(&mut self) -> Result<Block> {
+        let lbrace = self.expect(TokenKind::LBrace)?;
+        self.maybe_eol();
+        let mut statements = Vec::new();
+        while self.current.kind != TokenKind::RBrace {
+            statements.push(self.statement()?);
+            self.maybe_eol();
+        }
+        let rbrace = self.expect(TokenKind::RBrace)?;
+        self.maybe_eol();
+        Ok(Block {
+            node: self.node(lbrace.span, rbrace.span),
+            kind: BlockKind::Braces { statements },
+        })
+    }
+
+    fn expr_block(&mut self) -> Result<Block> {
+        let colon = self.expect(TokenKind::Colon)?;
+        self.maybe_eol();
+        let expr = self.expression()?;
+        let end = expr.node.span;
+        self.maybe_eol();
+        Ok(Block {
+            node: self.node(colon.span, end),
+            kind: BlockKind::Expr { expr },
         })
     }
 

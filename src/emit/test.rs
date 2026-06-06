@@ -322,3 +322,28 @@ fn function_calls() {
     13
     ");
 }
+
+#[test]
+fn short_body_functions() {
+    // Functions defined with the short colon body run identically to ones
+    // using a braces body with an explicit `return`.
+    let src = r#"
+        import fn print_int(x Int)
+        import fn print_bool(x Bool)
+        fn add(a Int, b Int) Int: a + b
+        fn square(x Int) Int: x * x
+        fn is_even(n Int) Bool: n % 2 == 0
+        export fn main() {
+            print_int(add(3, 4))
+            print_int(square(5))
+            print_bool(is_even(4))
+            print_bool(is_even(7))
+        }
+    "#;
+    assert_snapshot!(compile_and_run(src), @"
+    7
+    25
+    true
+    false
+    ");
+}

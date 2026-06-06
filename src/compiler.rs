@@ -94,7 +94,7 @@ impl Compiler {
         ty: ir::TypeIdx,
         name: &ast::Identifier,
         params: &[ast::Param],
-        body: &ast::Stmt,
+        body: &ast::Block,
     ) -> ir::Function {
         let func_id = self.declaration_id(name);
         let locals = self
@@ -103,13 +103,26 @@ impl Compiler {
             .map(|d| d.ty.lower())
             .collect::<Vec<ir::ValType>>();
         let mut ins = Vec::new();
-        self.stmt(&mut ins, body);
+        self.block(&mut ins, body);
         // TODO: Functions returning unit should pop the stack
         ins.push(ir::Instruction::End);
         ir::Function {
             ty,
             locals,
             body: ins,
+        }
+    }
+
+    fn block(&self, ins: &mut Vec<ir::Instruction>, block: &ast::Block) {
+        match &block.kind {
+            ast::BlockKind::Braces { statements } => {
+                for stmt in statements {
+                    self.stmt(ins, stmt);
+                }
+            }
+            ast::BlockKind::Expr { expr } => {
+                self.expr(ins, expr);
+            }
         }
     }
 

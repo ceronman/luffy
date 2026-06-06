@@ -103,6 +103,47 @@ fn valid_forward_function_reference() {
     assert_snapshot!(check(src), @"<no error>");
 }
 
+// ── Short colon function body ─────────────────────────────────────────────────
+
+#[test]
+fn valid_short_body_matches_return_type() {
+    assert_snapshot!(check("fn add(a Int, b Int) Int: a + b"), @"<no error>");
+}
+
+#[test]
+fn valid_short_body_bool() {
+    assert_snapshot!(check("fn is_even(n Int) Bool: n % 2 == 0"), @"<no error>");
+}
+
+#[test]
+fn valid_short_body_calling_other_function() {
+    let src = r#"
+        fn double(x Int) Int: x + x
+        fn quad(x Int) Int: double(double(x))
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn valid_short_body_no_return_type() {
+    // No return type (Unit): the expression must also be Unit-typed, such as a
+    // call to a Unit-returning function.
+    let src = r#"
+        import fn print_int(x Int)
+        fn greet(): print_int(1)
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn error_short_body_type_mismatch() {
+    // The expression's type must match the declared return type.
+    assert_snapshot!(check("fn f() Int: true"), @"
+    fn f() Int: true
+                ^^^^ ─── Type mismatch: expected 'Int', found 'Bool'
+    ");
+}
+
 // ── Name resolution errors ────────────────────────────────────────────────────
 
 #[test]

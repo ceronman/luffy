@@ -1,6 +1,6 @@
 use crate::ast::{
-    BinOpKind, Expr, ExprKind, Identifier, Item, ItemKind, LiteralKind, Module, Stmt, StmtKind,
-    TypeKind, TypeRef, UnOpKind,
+    BinOpKind, Block, BlockKind, Expr, ExprKind, Identifier, Item, ItemKind, LiteralKind, Module,
+    Stmt, StmtKind, TypeKind, TypeRef, UnOpKind,
 };
 use std::fmt::Write;
 
@@ -52,7 +52,7 @@ impl PrettyAst {
                                 .unwrap_or(Self::new("Unit", vec![])),
                         ],
                     ),
-                    Self::new("Body", vec![Self::stmt(body)]),
+                    Self::new("Body", vec![Self::block(body)]),
                 ],
             ),
             ItemKind::Import {
@@ -85,6 +85,14 @@ impl PrettyAst {
                     ),
                 ],
             ),
+        }
+    }
+    fn block(block: &Block) -> PrettyAst {
+        match &block.kind {
+            BlockKind::Braces { statements } => {
+                Self::new("Block", statements.iter().map(Self::stmt))
+            }
+            BlockKind::Expr { expr } => Self::new("ExprBlock", vec![Self::expression(expr)]),
         }
     }
     fn stmt(statement: &Stmt) -> PrettyAst {

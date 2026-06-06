@@ -143,6 +143,26 @@ Call a function by name:
 let result Int = add(3, 4)
 ```
 
+### Short function bodies
+
+A function whose body is a single expression can be written with a colon (`:`) instead of a braces block. The expression after the colon is the function's return value, so no `return` is needed:
+
+```luffy
+fn add(a Int, b Int) Int: a + b
+```
+
+This is exactly equivalent to the braces form:
+
+```luffy
+fn add(a Int, b Int) Int {
+    return a + b
+}
+```
+
+The colon form accepts a *single expression only* — statements such as `let` declarations or assignments are not allowed after the colon. When you need more than one statement, use a braces block. As a matter of style, prefer the colon form for simple, single-expression functions and the braces form when the body does real work.
+
+The function body must be either a braces block or a colon expression; a bare statement is no longer a valid function body.
+
 Functions can call other functions defined anywhere in the file — declaration order does not matter. Recursion works too.
 
 ```luffy

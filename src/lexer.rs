@@ -57,6 +57,8 @@ pub enum TokenKind {
     Comma,
     Dot,
 
+    Colon,
+
     Eof,
     Error,
 }
@@ -151,6 +153,7 @@ impl<'src> Lexer<'src> {
             (']', _) => TokenKind::RBracket,
             (',', _) => TokenKind::Comma,
             ('.', _) => TokenKind::Dot,
+            (':', _) => TokenKind::Colon,
             ('0'..='9', _) => self.number(),
             ('"', _) => self.string(),
             (c, _) if c == '_' || c.is_alphabetic() => self.identifier(),
@@ -322,6 +325,7 @@ impl Display for TokenKind {
             TokenKind::Eol => "<End of line>",
             TokenKind::Comma => "`,`",
             TokenKind::Dot => "`.`",
+            TokenKind::Colon => "`:`",
             TokenKind::Eof => "<End of file>",
             TokenKind::Error => "<Error>",
         };

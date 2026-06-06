@@ -33,6 +33,23 @@ fn simple_function() {
 }
 
 #[test]
+fn short_body_compiles_like_braces() {
+    // A short colon body leaves the expression value on the stack as the
+    // function result, identical to a braces body with the same expression.
+    let wat = compile_to_wat("fn add(a Int, b Int) Int: a + b");
+    assert_snapshot!(wat, @"
+    (module
+      (type (;0;) (func (param i64 i64) (result i64)))
+      (func (;0;) (type 0) (param i64 i64) (result i64)
+        local.get 0
+        local.get 1
+        i64.add
+      )
+    )
+    ");
+}
+
+#[test]
 fn return_integer_literal() {
     assert_snapshot!(compile_to_wat("fn main() Int { return 42 }"), @"
     (module

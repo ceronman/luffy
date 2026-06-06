@@ -2,8 +2,8 @@
 mod test;
 
 use crate::ast::{
-    BinOpKind, Expr, ExprKind, Identifier, ItemKind, LiteralKind, Module, NodeId, Param, Stmt,
-    StmtKind, Symbol, TypeKind, TypeRef, UnOpKind,
+    BinOpKind, Block, BlockKind, Expr, ExprKind, Identifier, ItemKind, LiteralKind, Module, NodeId,
+    Param, Stmt, StmtKind, Symbol, TypeKind, TypeRef, UnOpKind,
 };
 use crate::error::{CompilerError, ErrorKind};
 use crate::lexer::Span;
@@ -146,7 +146,7 @@ impl Resolver {
         Ok(())
     }
 
-    fn function(&mut self, name: &Identifier, params: &[Param], body: &Stmt) -> Result<()> {
+    fn function(&mut self, name: &Identifier, params: &[Param], body: &Block) -> Result<()> {
         let decl_id = self.lookup(name)?;
         self.semantics.uses.insert(name.node.id, decl_id);
 
@@ -159,9 +159,28 @@ impl Resolver {
         {
             self.declare_local(param_name, ty.lower(), decl_id)?
         }
-        self.stmt(body, decl_id)?;
+        self.block(body, decl_id)?;
         self.end_scope();
 
+        Ok(())
+    }
+
+    fn block(&mut self, block: &Block, func_id: DeclarationId) -> Result<()> {
+        match &block.kind {
+            BlockKind::Braces { statements } => {
+                for stmt in statements {
+                    self.stmt(stmt, func_id)?;
+                }
+            }
+            BlockKind::Expr { expr } => {
+                let ty = self.expr(expr)?;
+                let function_decl = &self.semantics.declarations[func_id];
+                let Type::Function { ret, .. } = &function_decl.ty else {
+                    return resolve_err(expr.node.span, "Return outside of function");
+                };
+                check_ty_match(expr.node.span, ret, &ty)?;
+            }
+        }
         Ok(())
     }
 

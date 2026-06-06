@@ -1,4 +1,4 @@
-use crate::ast::{ItemKind, StmtKind};
+use crate::ast::{BlockKind, ItemKind, StmtKind};
 use crate::{parser, pretty};
 use insta::assert_snapshot;
 
@@ -16,7 +16,7 @@ fn parse_expr(expr: &str) -> String {
             let ItemKind::Function { body, .. } = &m.items[0].kind else {
                 return pretty::ast::module(&m).unwrap();
             };
-            let StmtKind::Block { statements } = &body.kind else {
+            let BlockKind::Braces { statements } = &body.kind else {
                 return pretty::ast::module(&m).unwrap();
             };
             let StmtKind::ExprStmt { expr: e } = &statements[0].kind else {
@@ -35,7 +35,7 @@ fn parse_stmt(stmt_src: &str) -> String {
             let ItemKind::Function { body, .. } = &m.items[0].kind else {
                 return pretty::ast::module(&m).unwrap();
             };
-            let StmtKind::Block { statements } = &body.kind else {
+            let BlockKind::Braces { statements } = &body.kind else {
                 return pretty::ast::module(&m).unwrap();
             };
             pretty::ast::stmt(&statements[0]).unwrap()
@@ -518,6 +518,142 @@ fn multiple_functions_in_module() {
             └── Block
                 └── Return
                     └── Int[2]
+    ");
+}
+
+// ── Short colon function-body tests ───────────────────────────────────────────
+
+#[test]
+fn short_body_single_expression() {
+    let src = "fn add(a Int, b Int) Int: a + b";
+    assert_snapshot!(parse_module(src), @"
+    Module
+    └── Function [add]
+        ├── Export [false]
+        ├── Parameters
+        │   ├── Param
+        │   │   ├── Name
+        │   │   │   └── a
+        │   │   └── Type
+        │   │       └── Int
+        │   └── Param
+        │       ├── Name
+        │       │   └── b
+        │       └── Type
+        │           └── Int
+        ├── Return
+        │   └── Int
+        └── Body
+            └── ExprBlock
+                └── Binary [+]
+                    ├── Var [a]
+                    └── Var [b]
+    ");
+}
+
+#[test]
+fn short_body_literal() {
+    let src = "fn answer() Int: 42";
+    assert_snapshot!(parse_module(src), @"
+    Module
+    └── Function [answer]
+        ├── Export [false]
+        ├── Parameters
+        ├── Return
+        │   └── Int
+        └── Body
+            └── ExprBlock
+                └── Int[42]
+    ");
+}
+
+#[test]
+fn short_body_call_expression() {
+    let src = "fn twice(x Int) Int: double(x)";
+    assert_snapshot!(parse_module(src), @"
+    Module
+    └── Function [twice]
+        ├── Export [false]
+        ├── Parameters
+        │   └── Param
+        │       ├── Name
+        │       │   └── x
+        │       └── Type
+        │           └── Int
+        ├── Return
+        │   └── Int
+        └── Body
+            └── ExprBlock
+                └── Call
+                    ├── Var [double]
+                    └── Args
+                        └── Var [x]
+    ");
+}
+
+#[test]
+fn short_body_exported() {
+    let src = "export fn add(a Int, b Int) Int: a + b";
+    assert_snapshot!(parse_module(src), @"
+    Module
+    └── Function [add]
+        ├── Export [true]
+        ├── Parameters
+        │   ├── Param
+        │   │   ├── Name
+        │   │   │   └── a
+        │   │   └── Type
+        │   │       └── Int
+        │   └── Param
+        │       ├── Name
+        │       │   └── b
+        │       └── Type
+        │           └── Int
+        ├── Return
+        │   └── Int
+        └── Body
+            └── ExprBlock
+                └── Binary [+]
+                    ├── Var [a]
+                    └── Var [b]
+    ");
+}
+
+#[test]
+fn short_body_no_return_type() {
+    // No return type annotation (Unit), so the colon follows the `)` directly.
+    let src = "fn greet(): print_int(1)";
+    assert_snapshot!(parse_module(src), @"
+    Module
+    └── Function [greet]
+        ├── Export [false]
+        ├── Parameters
+        ├── Return
+        │   └── Unit
+        └── Body
+            └── ExprBlock
+                └── Call
+                    ├── Var [print_int]
+                    └── Args
+                        └── Int[1]
+    ");
+}
+
+#[test]
+fn error_function_body_must_be_block_or_colon() {
+    // A bare statement is no longer a valid function body.
+    assert_snapshot!(parse_module("fn f() Int x = 5"), @"
+    fn f() Int x = 5
+               ^ ─── Expected `{` or `:` for function body, found <Identifier> instead
+    ");
+}
+
+#[test]
+fn error_short_body_requires_expression() {
+    // After `:` an expression is required, not a statement.
+    assert_snapshot!(parse_module("fn f() Int: return 5"), @"
+    fn f() Int: return 5
+                ^^^^^^ ─── Unexpected `return`
     ");
 }
 
