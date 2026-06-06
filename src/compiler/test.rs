@@ -19,7 +19,7 @@ fn compile_to_wat(src: &str) -> String {
 
 #[test]
 fn simple_function() {
-    let wat = compile_to_wat(r#"fn main() Int { 1 + 1 }"#);
+    let wat = compile_to_wat(r#"fn main() Int { return 1 + 1 }"#);
     assert_snapshot!(wat, @"
     (module
       (type (;0;) (func (result i64)))
@@ -59,6 +59,39 @@ fn return_integer_literal() {
       )
     )
     ");
+}
+
+#[test]
+fn expression_statements_drop_the_stack() {
+    let src = r#"
+        import fn print_int(x Int)
+        fn square(x Int) Int { return x * x }
+        export fn main() {
+            print_int(256)
+            square(2)
+        }
+    "#;
+    assert_snapshot!(compile_to_wat(src), @r#"
+    (module
+      (type (;0;) (func (param i64)))
+      (type (;1;) (func (param i64) (result i64)))
+      (type (;2;) (func))
+      (import "js" "print_int" (func (;0;) (type 0)))
+      (export "main" (func 2))
+      (func (;1;) (type 1) (param i64) (result i64)
+        local.get 0
+        local.get 0
+        i64.mul
+      )
+      (func (;2;) (type 2)
+        i64.const 256
+        call 0
+        i64.const 2
+        call 1
+        drop
+      )
+    )
+    "#);
 }
 
 #[test]
@@ -504,7 +537,7 @@ fn logical_operators() {
     let src = r#"
         fn and_op(a Bool, b Bool) Bool { return a and b }
         fn or_op(a Bool, b Bool) Bool { return a or b }
-        fn not_op(a Bool) Bool { not a }
+        fn not_op(a Bool) Bool { return not a }
     "#;
     assert_snapshot!(compile_to_wat(src), @"
     (module

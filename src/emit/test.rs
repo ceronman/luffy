@@ -324,6 +324,21 @@ fn function_calls() {
 }
 
 #[test]
+fn expression_statements_drop_the_stack() {
+    // compile_and_run is used here (instead of run_main) so that helper
+    // functions can be defined alongside main.
+    let src = r#"
+        import fn print_int(x Int)
+        fn square(x Int) Int { return x * x }
+        export fn main() {
+            print_int(256)
+            square(2)
+        }
+    "#;
+    assert_snapshot!(compile_and_run(src), @"256");
+}
+
+#[test]
 fn short_body_functions() {
     // Functions defined with the short colon body run identically to ones
     // using a braces body with an explicit `return`.

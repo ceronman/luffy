@@ -34,14 +34,17 @@ pub enum Type {
 }
 
 impl Type {
-    fn is_numeric(&self) -> bool {
+    pub fn is_numeric(&self) -> bool {
         matches!(self, Type::Int | Type::Float)
     }
-    fn is_int(&self) -> bool {
+    pub fn is_int(&self) -> bool {
         matches!(self, Type::Int)
     }
-    fn is_bool(&self) -> bool {
+    pub fn is_bool(&self) -> bool {
         matches!(self, Type::Bool)
+    }
+    pub fn is_unit(&self) -> bool {
+        matches!(self, Type::Unit)
     }
 }
 

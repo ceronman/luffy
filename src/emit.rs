@@ -117,6 +117,7 @@ impl ir::Instruction {
             ir::Instruction::If(block_type) => Instruction::If(block_type.encode()),
             ir::Instruction::Else => Instruction::Else,
             ir::Instruction::Call(func_idx) => Instruction::Call(*func_idx),
+            ir::Instruction::Drop => Instruction::Drop,
             ir::Instruction::End => Instruction::End,
         }
     }

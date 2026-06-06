@@ -183,10 +183,11 @@ fn error_duplicate_variable_in_same_scope() {
 }
 
 #[test]
-// TODO: Fix this should be possible
 fn error_duplicate_function_name() {
-    let src = r#"fn foo() { }
-fn foo() { }"#;
+    let src = r#"
+        fn foo() { }
+        fn foo() { }
+    "#;
     assert_snapshot!(check(src), @r"
     fn foo() { }
        ^^^ ─── Name 'foo' is already declared in this scope

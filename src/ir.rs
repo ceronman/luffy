@@ -74,6 +74,7 @@ pub enum Instruction {
     LocalGet(LocalIdx),
     LocalSet(LocalIdx),
     Call(FuncIdx),
+    Drop,
     End,
 }
 

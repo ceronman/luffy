@@ -104,7 +104,6 @@ impl Compiler {
             .collect::<Vec<ir::ValType>>();
         let mut ins = Vec::new();
         self.block(&mut ins, body);
-        // TODO: Functions returning unit should pop the stack
         ins.push(ir::Instruction::End);
         ir::Function {
             ty,
@@ -128,7 +127,13 @@ impl Compiler {
 
     fn stmt(&self, ins: &mut Vec<ir::Instruction>, stmt: &ast::Stmt) {
         match &stmt.kind {
-            ast::StmtKind::ExprStmt { expr } => self.expr(ins, expr),
+            ast::StmtKind::ExprStmt { expr } => {
+                self.expr(ins, expr);
+                let ty = self.node_type(expr.node);
+                if !ty.is_unit() {
+                    ins.push(ir::Instruction::Drop);
+                }
+            }
             ast::StmtKind::Block { statements } => {
                 for stmt in statements {
                     self.stmt(ins, stmt);
