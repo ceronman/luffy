@@ -327,6 +327,15 @@ fn main() Int { return add(1, true) }"#;
 }
 
 #[test]
+fn error_function_block_without_return() {
+    let src = "fn add(a Int, b Int) Int { a + b }";
+    assert_snapshot!(check(src), @r"
+    fn add(a Int, b Int) Int { a + b }
+                                     ^ ─── Missing return statement
+    ");
+}
+
+#[test]
 fn error_return_type_mismatch() {
     let src = r#"fn add(a Int, b Int) Int { return a + b }
 fn main() Float { return add(1, 1) }"#;

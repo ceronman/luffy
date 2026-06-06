@@ -174,6 +174,18 @@ impl Resolver {
                 for stmt in statements {
                     self.stmt(stmt, func_id)?;
                 }
+                let function_decl = &self.semantics.declarations[func_id];
+                let Type::Function { ret, .. } = &function_decl.ty else {
+                    return resolve_err(block.node.span, "Return outside of function");
+                };
+                let ends_with_return = matches!(
+                    statements.last().map(|s| &s.kind),
+                    Some(StmtKind::Return { .. })
+                );
+                if !ret.is_unit() && !ends_with_return {
+                    let end = block.node.span.end;
+                    return type_err(Span::new(end - 1, end), "Missing return statement");
+                }
             }
             BlockKind::Expr { expr } => {
                 let ty = self.expr(expr)?;
