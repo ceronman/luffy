@@ -188,7 +188,7 @@ impl Resolver {
                 }
             }
             BlockKind::Expr { expr } => {
-                let ty = self.expr(expr)?;
+                let ty = self.expr(expr, func_id)?;
                 let function_decl = &self.semantics.declarations[func_id];
                 let Type::Function { ret, .. } = &function_decl.ty else {
                     return resolve_err(expr.node.span, "Return outside of function");
@@ -199,15 +199,34 @@ impl Resolver {
         Ok(())
     }
 
-    fn stmt(&mut self, stmt: &Stmt, func_id: DeclarationId) -> Result<()> {
-        match &stmt.kind {
+    fn stmt(&mut self, stmt: &Stmt, func_id: DeclarationId) -> Result<Type> {
+        let ty = match &stmt.kind {
             StmtKind::ExprStmt { expr } => {
-                self.expr(expr)?;
+                if let ExprKind::If {
+                    condition,
+                    then_branch,
+                    else_branch,
+                } = &expr.kind
+                {
+                    // TODO: Figure out how to avoid this duplication
+                    self.check_condition(condition, func_id)?;
+                    self.block_type(then_branch, func_id)?;
+                    if let Some(else_branch) = else_branch {
+                        self.block_type(else_branch, func_id)?;
+                    }
+                    self.semantics.expr_types.insert(expr.node.id, Type::Unit);
+                    Type::Unit
+                } else {
+                    self.expr(expr, func_id)?
+                }
             }
             StmtKind::Block { statements } => {
+                // TODO: This is very similar to `self.block_type` Maybe remove this alltogether?
+                let mut ty = Type::Unit;
                 for stmt in statements {
-                    self.stmt(stmt, func_id)?;
+                    ty = self.stmt(stmt, func_id)?;
                 }
+                ty
             }
             StmtKind::Declaration {
                 name,
@@ -215,32 +234,36 @@ impl Resolver {
                 initializer,
             } => {
                 let var_ty = ty.lower();
-                let init_ty = self.expr(initializer)?;
+                let init_ty = self.expr(initializer, func_id)?;
                 check_ty_match(initializer.node.span, &var_ty, &init_ty)?;
                 self.declare_local(name, var_ty, func_id)?;
+                Type::Unit
             }
             StmtKind::Assignment { target, value } => {
-                self.expr(target)?;
+                self.expr(target, func_id)?;
                 let ExprKind::Variable { name } = &target.kind else {
                     return resolve_err(target.node.span, "Invalid assignment target");
                 };
                 let target_ty = self.lookup_ty(name)?;
-                let expr_ty = self.expr(value)?;
+                let expr_ty = self.expr(value, func_id)?;
                 check_ty_match(value.node.span, &target_ty, &expr_ty)?;
+                Type::Unit
             }
             StmtKind::Return { expr } => {
-                let ty = self.expr(expr)?;
+                let ty = self.expr(expr, func_id)?;
                 let function_decl = &self.semantics.declarations[func_id];
                 let Type::Function { ret, .. } = &function_decl.ty else {
                     return resolve_err(expr.node.span, "Return outside of function");
                 };
                 check_ty_match(expr.node.span, ret, &ty)?;
+                Type::Unit
             }
-        }
-        Ok(())
+        };
+        self.semantics.expr_types.insert(stmt.node.id, Type::Unit);
+        Ok(ty)
     }
 
-    fn expr(&mut self, expr: &Expr) -> Result<Type> {
+    fn expr(&mut self, expr: &Expr, func_id: DeclarationId) -> Result<Type> {
         let ty = match &expr.kind {
             ExprKind::Literal { kind } => match kind {
                 LiteralKind::Int(_) => Type::Int,
@@ -253,7 +276,7 @@ impl Resolver {
                 self.lookup_ty(name)?
             }
             ExprKind::Unary { expr, op } => {
-                let expr_ty = self.expr(expr)?;
+                let expr_ty = self.expr(expr, func_id)?;
                 match op.kind {
                     UnOpKind::Neg => {
                         if !expr_ty.is_numeric() {
@@ -275,8 +298,8 @@ impl Resolver {
                 expr_ty
             }
             ExprKind::Binary { op, left, right } => {
-                let left_ty = self.expr(left)?;
-                let right_ty = self.expr(right)?;
+                let left_ty = self.expr(left, func_id)?;
+                let right_ty = self.expr(right, func_id)?;
                 check_ty_match(right.node.span, &left_ty, &right_ty)?;
                 match op.kind {
                     BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul | BinOpKind::Div => {
@@ -323,20 +346,64 @@ impl Resolver {
                 }
             }
             ExprKind::Call { callee, args } => {
-                let Type::Function { params, ret } = self.expr(callee)? else {
+                let Type::Function { params, ret } = self.expr(callee, func_id)? else {
                     return type_err(
                         callee.node.span,
                         "Invalid function call: callee is not a function",
                     );
                 };
                 for (arg, param_ty) in args.iter().zip(params.iter()) {
-                    let arg_ty = self.expr(arg)?;
+                    let arg_ty = self.expr(arg, func_id)?;
                     check_ty_match(arg.node.span, param_ty, &arg_ty)?;
                 }
                 (*ret).clone()
             }
+            ExprKind::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                self.check_condition(condition, func_id)?;
+                let Some(else_branch) = else_branch else {
+                    return type_err(
+                        expr.node.span,
+                        "'if' must have both main and 'else' branches when used as an expression.",
+                    );
+                };
+                let then_ty = self.block_type(then_branch, func_id)?;
+                let else_ty = self.block_type(else_branch, func_id)?;
+                check_ty_match(expr.node.span, &then_ty, &else_ty)?;
+                then_ty
+            }
         };
         self.semantics.expr_types.insert(expr.node.id, ty.clone());
+        Ok(ty)
+    }
+
+    fn check_condition(&mut self, condition: &Expr, func_id: DeclarationId) -> Result<()> {
+        let cond_ty = self.expr(condition, func_id)?;
+        if !cond_ty.is_bool() {
+            return type_err(
+                condition.node.span,
+                format!("Condition of 'if' must be 'Bool', found '{cond_ty}'"),
+            );
+        }
+        Ok(())
+    }
+
+    fn block_type(&mut self, block: &Block, func_id: DeclarationId) -> Result<Type> {
+        self.begin_scope();
+        let ty = match &block.kind {
+            BlockKind::Braces { statements } => {
+                let mut result = Type::Unit;
+                for stmt in statements {
+                    result = self.stmt(stmt, func_id)?;
+                }
+                result
+            }
+            BlockKind::Expr { expr } => self.expr(expr, func_id)?,
+        };
+        self.end_scope();
         Ok(ty)
     }
 

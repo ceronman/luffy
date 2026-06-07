@@ -130,6 +130,11 @@ pub enum ExprKind {
         callee: Box<Expr>,
         args: Vec<Expr>,
     },
+    If {
+        condition: Box<Expr>,
+        then_branch: Box<Block>,
+        else_branch: Option<Box<Block>>,
+    },
 }
 
 #[derive(Debug)]

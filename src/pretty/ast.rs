@@ -135,6 +135,20 @@ impl PrettyAst {
                 let args = Self::new("Args", args.iter().map(Self::expression));
                 Self::new("Call", vec![callee, args])
             }
+            ExprKind::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                let mut children = vec![
+                    Self::new("Condition", vec![Self::expression(condition)]),
+                    Self::new("Then", vec![Self::block(then_branch)]),
+                ];
+                if let Some(else_branch) = else_branch {
+                    children.push(Self::new("Else", vec![Self::block(else_branch)]));
+                }
+                Self::new("If", children)
+            }
         }
     }
 

@@ -362,3 +362,57 @@ fn short_body_functions() {
     false
     ");
 }
+
+// ── `if` expression execution ─────────────────────────────────────────────────
+
+#[test]
+fn if_expression_selects_then_branch() {
+    let body = r#"
+        let a Int = if 5 > 0 { 1 } else { 2 }
+        print_int(a)
+    "#;
+    assert_snapshot!(run_main(body), @"1");
+}
+
+#[test]
+fn if_expression_selects_else_branch() {
+    let body = r#"
+        let a Int = if 0 > 5: 1 else: 2
+        print_int(a)
+    "#;
+    assert_snapshot!(run_main(body), @"2");
+}
+
+#[test]
+fn if_statement_runs_then_branch_only_when_true() {
+    let body = r#"
+        if 5 > 0 {
+            print_int(1)
+        }
+        if 0 > 5 {
+            print_int(2)
+        }
+        print_int(3)
+    "#;
+    assert_snapshot!(run_main(body), @"
+    1
+    3
+    ");
+}
+
+#[test]
+fn if_branch_last_expression_is_the_value() {
+    let body = r#"
+        let a Int = if 5 > 0 {
+            print_int(99)
+            10
+        } else {
+            20
+        }
+        print_int(a)
+    "#;
+    assert_snapshot!(run_main(body), @"
+    99
+    10
+    ");
+}

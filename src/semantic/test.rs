@@ -482,3 +482,79 @@ fn error_not_on_float() {
                            ^^^ ─── Operator requires boolean type
     ");
 }
+
+// ── `if` expression tests ─────────────────────────────────────────────────────
+
+#[test]
+fn valid_if_expression_braces() {
+    assert_snapshot!(check("fn f(a Int) Int { return if a > 0 { 1 } else { 2 } }"), @"<no error>");
+}
+
+#[test]
+fn valid_if_expression_colon() {
+    assert_snapshot!(check("fn f(a Int) Int { return if a > 0: 1 else: 2 }"), @"<no error>");
+}
+
+#[test]
+fn valid_if_expression_in_declaration() {
+    let src = r#"
+        fn f(a Int) Int {
+            let b Int = if a > 0 { 1 } else { 2 }
+            return b
+        }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn valid_if_statement_without_else() {
+    let src = r#"
+        import fn print_int(x Int)
+        fn f(a Int) {
+            if a > 0 {
+                print_int(1)
+            }
+        }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn valid_if_branch_last_expression_determines_type() {
+    let src = r#"
+        import fn print_int(x Int)
+        fn f(a Int) Int {
+            return if a > 0 {
+                print_int(1)
+                10
+            } else {
+                20
+            }
+        }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn error_if_expression_without_else() {
+    assert_snapshot!(check("fn f(a Int) Int { let b Int = if a > 0: 0 }"), @"
+    fn f(a Int) Int { let b Int = if a > 0: 0 }
+                                  ^^^^^^^^^^^ ─── 'if' must have both main and 'else' branches when used as an expression.
+    ");
+}
+
+#[test]
+fn error_if_branch_type_mismatch() {
+    assert_snapshot!(check("fn f(a Int) Int { return if a > 0 { 1 } else { 2.5 } }"), @"
+    fn f(a Int) Int { return if a > 0 { 1 } else { 2.5 } }
+                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^ ─── Type mismatch: expected 'Int', found 'Float'
+    ");
+}
+
+#[test]
+fn error_if_condition_not_bool() {
+    assert_snapshot!(check("fn f(a Int) Int { return if a { 1 } else { 2 } }"), @"
+    fn f(a Int) Int { return if a { 1 } else { 2 } }
+                                ^ ─── Condition of 'if' must be 'Bool', found 'Int'
+    ");
+}

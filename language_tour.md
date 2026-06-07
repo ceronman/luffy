@@ -252,6 +252,64 @@ fn sum_of_squares(a Int, b Int) Int {
 
 ---
 
+## Conditionals
+
+`if` chooses between two branches based on a `Bool` condition. The condition is *not* parenthesized — like Rust, and unlike Java or Kotlin:
+
+```luffy
+if a > 0 {
+    print_int(1)
+} else {
+    print_int(2)
+}
+```
+
+Each branch is a block, so it follows the same two forms as a function body. The braces form holds any number of statements; the colon form holds a single expression:
+
+```luffy
+if a > 0: print_int(1) else: print_int(2)
+```
+
+### `if` as an expression
+
+`if` is an expression: it produces a value, which means there is no separate ternary operator. The value of a branch is its last expression — for a colon branch that is the expression after the colon, and for a braces branch it is the value of the final expression statement.
+
+```luffy
+let a Int = if x > 0 { 1 } else { 2 }
+let b Int = if y > 0: 1 else: 2
+```
+
+When `if` is used as an expression, both branches must be present and must have the same type, which becomes the type of the whole expression. A braces branch can do work before producing its value:
+
+```luffy
+let label Int = if score > 50 {
+    print_int(score)
+    1
+} else {
+    0
+}
+```
+
+### Omitting `else`
+
+When `if` is used as a statement, the `else` branch is optional and any branch value is discarded:
+
+```luffy
+if x > 0 {
+    print_int(1)
+}
+```
+
+But when `if` is used as an expression, the `else` branch is mandatory — there would otherwise be no value when the condition is false:
+
+```luffy
+let x Int = if a > 0: 0   // error: 'if' must have both main and 'else' branches when used as an expression
+```
+
+This mirrors how `if` works in Kotlin.
+
+---
+
 ## Imports and Exports
 
 Luffy modules live inside a WebAssembly module. Functions from the host environment are brought in with `import fn` and made available to the rest of the module. No body is needed — the host provides the implementation.

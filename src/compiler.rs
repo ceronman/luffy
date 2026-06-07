@@ -256,6 +256,45 @@ impl Compiler {
                 }
                 ins.push(ir::Instruction::Call(address));
             }
+            ast::ExprKind::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                self.expr(ins, condition);
+                let ty = self.node_type(expr.node);
+                let block_type = if ty.is_unit() {
+                    ir::BlockType::Empty
+                } else {
+                    ir::BlockType::Result(ty.lower())
+                };
+                ins.push(ir::Instruction::If(block_type));
+                self.branch(ins, then_branch);
+                if let Some(else_branch) = else_branch {
+                    ins.push(ir::Instruction::Else);
+                    self.branch(ins, else_branch);
+                }
+                ins.push(ir::Instruction::End);
+            }
+        }
+    }
+
+    // TODO: very similar to `block`, duplication
+    fn branch(&self, ins: &mut Vec<ir::Instruction>, block: &ast::Block) {
+        match &block.kind {
+            ast::BlockKind::Braces { statements } => {
+                for (i, stmt) in statements.iter().enumerate() {
+                    let is_last = i + 1 == statements.len();
+                    if let ast::StmtKind::ExprStmt { expr } = &stmt.kind
+                        && is_last
+                    {
+                        self.expr(ins, expr);
+                        return;
+                    }
+                    self.stmt(ins, stmt);
+                }
+            }
+            ast::BlockKind::Expr { expr } => self.expr(ins, expr),
         }
     }
 

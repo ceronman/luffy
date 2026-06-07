@@ -1503,3 +1503,199 @@ fn error_two_expression_statements_without_separator() {
                    ^^^ ─── Expected newline or `;` between statements, found <Identifier>
     ");
 }
+
+// ── `if` expression tests ─────────────────────────────────────────────────────
+
+#[test]
+fn if_expression_braces() {
+    assert_snapshot!(parse_expr("if a > 0 { 1 } else { 2 }"), @"
+    If
+    ├── Condition
+    │   └── Binary [>]
+    │       ├── Var [a]
+    │       └── Int[0]
+    ├── Then
+    │   └── Block
+    │       └── Int[1]
+    └── Else
+        └── Block
+            └── Int[2]
+    ");
+}
+
+#[test]
+fn if_expression_colon() {
+    assert_snapshot!(parse_expr("if a > 0: 1 else: 2"), @"
+    If
+    ├── Condition
+    │   └── Binary [>]
+    │       ├── Var [a]
+    │       └── Int[0]
+    ├── Then
+    │   └── ExprBlock
+    │       └── Int[1]
+    └── Else
+        └── ExprBlock
+            └── Int[2]
+    ");
+}
+
+#[test]
+fn if_statement_without_else() {
+    assert_snapshot!(parse_expr("if a > 0 { print_int(1) }"), @"
+    If
+    ├── Condition
+    │   └── Binary [>]
+    │       ├── Var [a]
+    │       └── Int[0]
+    └── Then
+        └── Block
+            └── Call
+                ├── Var [print_int]
+                └── Args
+                    └── Int[1]
+    ");
+}
+
+#[test]
+fn if_branch_with_multiple_statements() {
+    let expr = r#"if a > 0 {
+        print_int(1)
+        2
+    } else {
+        3
+    }"#;
+    assert_snapshot!(parse_expr(expr), @"
+    If
+    ├── Condition
+    │   └── Binary [>]
+    │       ├── Var [a]
+    │       └── Int[0]
+    ├── Then
+    │   └── Block
+    │       ├── Call
+    │       │   ├── Var [print_int]
+    │       │   └── Args
+    │       │       └── Int[1]
+    │       └── Int[2]
+    └── Else
+        └── Block
+            └── Int[3]
+    ");
+}
+
+#[test]
+fn nested_if_binds_else_to_nearest_if() {
+    // The colon form: the `else` must bind to the inner `if`, not the outer one.
+    assert_snapshot!(parse_expr("if a > 0: if b > 0: 1 else: 2"), @"
+    If
+    ├── Condition
+    │   └── Binary [>]
+    │       ├── Var [a]
+    │       └── Int[0]
+    └── Then
+        └── ExprBlock
+            └── If
+                ├── Condition
+                │   └── Binary [>]
+                │       ├── Var [b]
+                │       └── Int[0]
+                ├── Then
+                │   └── ExprBlock
+                │       └── Int[1]
+                └── Else
+                    └── ExprBlock
+                        └── Int[2]
+    ");
+}
+
+// The braces form spanning multiple lines and the colon form on a single line
+// must parse to the same AST. Both snapshots below are expected to be identical.
+
+#[test]
+fn if_braces_spanning_lines() {
+    let src = r#"
+        fn f(a Int) Int {
+            if a > 0 {
+                1
+            } else {
+                2
+            }
+        }
+    "#;
+    assert_snapshot!(parse_module(src), @"
+    Module
+    └── Function [f]
+        ├── Export [false]
+        ├── Parameters
+        │   └── Param
+        │       ├── Name
+        │       │   └── a
+        │       └── Type
+        │           └── Int
+        ├── Return
+        │   └── Int
+        └── Body
+            └── Block
+                └── If
+                    ├── Condition
+                    │   └── Binary [>]
+                    │       ├── Var [a]
+                    │       └── Int[0]
+                    ├── Then
+                    │   └── Block
+                    │       └── Int[1]
+                    └── Else
+                        └── Block
+                            └── Int[2]
+    ");
+}
+
+#[test]
+fn if_else_keyword_on_new_line() {
+    // `else` continues the `if` even when placed at the start of a new line.
+    let src = r#"
+        fn f(a Int) Int {
+            if a > 0 {
+                1
+            }
+            else {
+                2
+            }
+        }
+    "#;
+    assert_snapshot!(parse_module(src), @"
+    Module
+    └── Function [f]
+        ├── Export [false]
+        ├── Parameters
+        │   └── Param
+        │       ├── Name
+        │       │   └── a
+        │       └── Type
+        │           └── Int
+        ├── Return
+        │   └── Int
+        └── Body
+            └── Block
+                └── If
+                    ├── Condition
+                    │   └── Binary [>]
+                    │       ├── Var [a]
+                    │       └── Int[0]
+                    ├── Then
+                    │   └── Block
+                    │       └── Int[1]
+                    └── Else
+                        └── Block
+                            └── Int[2]
+    ");
+}
+
+#[test]
+fn error_if_branch_missing_block_or_colon() {
+    assert_snapshot!(parse_module("fn f(a Int) Int { return if a > 0 1 else 2 }"), @"
+    fn f(a Int) Int { return if a > 0 1 else 2 }
+                                      ^ ─── Expected `{` or `:` for `if` branch, found `<Int> instead
+    ");
+}

@@ -185,6 +185,7 @@ impl<'src> Parser<'src> {
             }
             TokenKind::Identifier => self.variable()?,
             TokenKind::Not | TokenKind::Minus => self.unary_expr()?,
+            TokenKind::If => self.if_expr()?,
 
             other_kind => {
                 return error(self.current.span, format!("Unexpected {}", other_kind));
@@ -438,13 +439,21 @@ impl<'src> Parser<'src> {
     }
 
     fn function_body(&mut self) -> Result<Block> {
+        self.block_body("function body")
+    }
+
+    /// Parses a block in either form: a braces block (`{ ... }`) or a short
+    /// colon block (`: expr`). Used for both function bodies and `if` branches.
+    /// `context` names the construct for the error message shown when neither
+    /// form is found (e.g. "function body", "`if` branch").
+    fn block_body(&mut self, context: &str) -> Result<Block> {
         match self.current.kind {
             TokenKind::LBrace => self.braces_block(),
             TokenKind::Colon => self.expr_block(),
             _ => error(
                 self.current.span,
                 format!(
-                    "Expected `{{` or `:` for function body, found {} instead",
+                    "Expected `{{` or `:` for {context}, found {} instead",
                     self.current.kind
                 ),
             ),
@@ -468,6 +477,28 @@ impl<'src> Parser<'src> {
         Ok(Block {
             node: self.node(colon.span, end),
             kind: BlockKind::Expr { expr },
+        })
+    }
+
+    fn if_expr(&mut self) -> Result<Expr> {
+        let if_kw = self.expect(TokenKind::If)?;
+        let condition = self.expression()?;
+        let then_branch = self.block_body("`if` branch")?;
+        let mut end = then_branch.node.span;
+        let else_branch = if self.eat(TokenKind::Else) {
+            let block = self.block_body("`if` branch")?;
+            end = block.node.span;
+            Some(block.into())
+        } else {
+            None
+        };
+        Ok(Expr {
+            node: self.node(if_kw.span, end),
+            kind: ExprKind::If {
+                condition: condition.into(),
+                then_branch: then_branch.into(),
+                else_branch,
+            },
         })
     }
 

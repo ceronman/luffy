@@ -567,3 +567,74 @@ fn logical_operators() {
     )
     ");
 }
+
+// ── `if` expression compilation ───────────────────────────────────────────────
+
+#[test]
+fn if_expression_compiles_to_if_else_result() {
+    let wat = compile_to_wat("fn f(a Int) Int { return if a > 0 { 1 } else { 2 } }");
+    assert_snapshot!(wat, @"
+    (module
+      (type (;0;) (func (param i64) (result i64)))
+      (func (;0;) (type 0) (param i64) (result i64)
+        local.get 0
+        i64.const 0
+        i64.gt_s
+        if (result i64) ;; label = @1
+          i64.const 1
+        else
+          i64.const 2
+        end
+      )
+    )
+    ");
+}
+
+#[test]
+fn if_expression_colon_form() {
+    let wat = compile_to_wat("fn f(a Int) Int { return if a > 0: 1 else: 2 }");
+    assert_snapshot!(wat, @"
+    (module
+      (type (;0;) (func (param i64) (result i64)))
+      (func (;0;) (type 0) (param i64) (result i64)
+        local.get 0
+        i64.const 0
+        i64.gt_s
+        if (result i64) ;; label = @1
+          i64.const 1
+        else
+          i64.const 2
+        end
+      )
+    )
+    ");
+}
+
+#[test]
+fn if_statement_without_else_has_no_result() {
+    let src = r#"
+        import fn print_int(x Int)
+        export fn main() {
+            if 1 > 0 {
+                print_int(1)
+            }
+        }
+    "#;
+    assert_snapshot!(compile_to_wat(src), @r#"
+    (module
+      (type (;0;) (func (param i64)))
+      (type (;1;) (func))
+      (import "js" "print_int" (func (;0;) (type 0)))
+      (export "main" (func 1))
+      (func (;1;) (type 1)
+        i64.const 1
+        i64.const 0
+        i64.gt_s
+        if ;; label = @1
+          i64.const 1
+          call 0
+        end
+      )
+    )
+    "#);
+}

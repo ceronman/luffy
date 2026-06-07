@@ -120,7 +120,7 @@ enum StmtKind {
 }
 ```
 
-**`if` and `while` are not yet implemented.** The tokens exist in the lexer but the parser does not handle them and the AST has no corresponding `StmtKind` variants.
+**`if` is implemented** as an `ExprKind` variant (see Expressions below), not a `StmtKind`. **`while` is not yet implemented** — its token exists in the lexer but the parser does not handle it.
 
 ### Expressions
 
@@ -131,10 +131,20 @@ enum ExprKind {
     Unary    { op: UnOp, expr: Box<Expr> },                 // -x, not x
     Binary   { op: BinOp, left: Box<Expr>, right: Box<Expr> },
     Call     { callee: Box<Expr>, args: Vec<Expr> },
+    If       { condition: Box<Expr>, then_branch: Box<Block>, else_branch: Option<Box<Block>> },
 }
 ```
 
 Call expressions only work with a `Variable` callee at the compiler stage (function pointers are not supported yet). The semantic pass enforces the callee is a function type.
+
+`if` is an **expression**. Each branch is a `Block`, so it reuses the same braces/colon forms as a function body (`Parser::branch_block` mirrors `Parser::function_body`). The condition is parenthesis-free (Rust-style). A braces branch is typed by its last statement: if that statement is an expression statement, the branch's type is that expression's type; otherwise the branch is `Unit`. A colon branch is typed by its single expression.
+
+`if` behaves differently depending on position, and both the semantic pass and the compiler special-case it:
+
+- **Statement position** (the `if` is the direct `expr` of a `StmtKind::ExprStmt`): the `else` branch is optional and the branch value is discarded. `Resolver::if_statement` / `Compiler::if_statement` handle this; the construct has type `Unit` and lowers to a Wasm `if` with `BlockType::Empty`, dropping any branch value in place (`Compiler::branch_discard`).
+- **Expression position** (anywhere else — declaration initializer, `return`, call argument, operand, a branch's trailing expression, a colon function body): the `else` branch is **mandatory** and both branches must have the same type, which becomes the type of the `if`. Handled by the `ExprKind::If` arm in `Resolver::expr` / `Compiler::expr`; lowers to a Wasm `if` with `BlockType::Result(T)`, each branch leaving its value on the stack (`Compiler::branch`).
+
+This statement-vs-expression `else` rule matches Kotlin. The `Resolver` tracks the enclosing function in a `current_function` field so branch resolution can reach the function's return type and declare branch-local variables.
 
 ### Types
 
