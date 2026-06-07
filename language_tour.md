@@ -55,6 +55,81 @@ Variables are scoped to the block they are declared in. Declaring the same name 
 
 ---
 
+## Statements and lines
+
+Luffy has no mandatory statement terminator. Statements are separated by newlines, so the usual style is one statement per line:
+
+```luffy
+let x Int = 1
+let y Int = 2
+x = x + y
+```
+
+If you want to put several statements on a single line, separate them with a semicolon (`;`):
+
+```luffy
+let x Int = 1; let y Int = 2; x = x + y
+```
+
+Semicolons are only for statements inside a function body. Top-level items — functions and imports — need no separator at all, since each begins with a keyword. You can write them one per line or several on the same line; a `;` between items is an error:
+
+```luffy
+import fn print_int(x Int)
+import fn print_bool(x Bool)
+
+fn a() {} fn b() {}
+```
+
+Blank lines are ignored, and stray, repeated, or trailing semicolons between statements are harmless, so you can space code out however you like:
+
+```luffy
+fn main() {
+
+    let x Int = 1;;
+
+    print_int(x);
+}
+```
+
+Two statements on the same line *without* a separator are an error — add a newline or a `;`:
+
+```luffy
+let x Int = 1 let y Int = 2   // error: expected newline or `;`
+```
+
+### Spanning multiple lines
+
+Newlines are ignored inside parentheses and argument lists, and when an expression is clearly unfinished at the end of a line (for example, a line ending in an operator). This lets you wrap long signatures, calls, and expressions:
+
+```luffy
+fn add(
+    a Int,
+    b Int
+) Int {
+    return a +
+        b
+}
+
+let total Int = add(
+    1,
+    2
+)
+```
+
+Two cases are worth remembering:
+
+- A binary operator at the *start* of the next line still continues the expression. `a` followed by `- b` on the next line is the subtraction `a - b`, not two statements. To write two statements, separate them explicitly.
+- A `(` at the *start* of a new line begins a new statement rather than a function call. Keep the opening parenthesis on the same line as the function name:
+
+```luffy
+foo(x)     // a call
+
+foo
+(x)        // two statements: `foo`, then `(x)`
+```
+
+---
+
 ## Arithmetic
 
 The standard arithmetic operators work on `Int` and `Float`.

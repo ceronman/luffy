@@ -58,6 +58,7 @@ pub enum TokenKind {
     Dot,
 
     Colon,
+    Semicolon,
 
     Eof,
     Error,
@@ -79,6 +80,11 @@ impl Span {
 pub struct Token {
     pub kind: TokenKind,
     pub span: Span,
+    /// Whether at least one end-of-line token was skipped immediately before
+    /// this token while scanning for the next significant token. The parser
+    /// uses this (Swift-style `isAtStartOfLine`) to detect statement
+    /// boundaries without newlines appearing in its token stream.
+    pub newline_before: bool,
 }
 
 #[derive(Clone)]
@@ -109,17 +115,28 @@ impl<'src> Lexer<'src> {
                 start: self.start,
                 end: self.offset,
             },
+            newline_before: false,
         }
     }
 
-    pub fn next_non_trivial(&mut self) -> Token {
+    /// Returns the next token that is significant to the parser, skipping
+    /// whitespace, comments, and end-of-line tokens.
+    pub fn next_significant(&mut self) -> Token {
+        let mut newline_before = false;
         loop {
-            let token = self.next_token();
+            let mut token = self.next_token();
             match token.kind {
                 TokenKind::Whitespace | TokenKind::BlockComment | TokenKind::LineComment => {
                     continue;
                 }
-                _ => return token,
+                TokenKind::Eol => {
+                    newline_before = true;
+                    continue;
+                }
+                _ => {
+                    token.newline_before = newline_before;
+                    return token;
+                }
             }
         }
     }
@@ -154,6 +171,7 @@ impl<'src> Lexer<'src> {
             (',', _) => TokenKind::Comma,
             ('.', _) => TokenKind::Dot,
             (':', _) => TokenKind::Colon,
+            (';', _) => TokenKind::Semicolon,
             ('0'..='9', _) => self.number(),
             ('"', _) => self.string(),
             (c, _) if c == '_' || c.is_alphabetic() => self.identifier(),
@@ -326,6 +344,7 @@ impl Display for TokenKind {
             TokenKind::Comma => "`,`",
             TokenKind::Dot => "`.`",
             TokenKind::Colon => "`:`",
+            TokenKind::Semicolon => "`;`",
             TokenKind::Eof => "<End of file>",
             TokenKind::Error => "<Error>",
         };

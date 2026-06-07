@@ -40,7 +40,7 @@ Source → Lexer → Parser → Semantic Analysis → Compiler → Emitter → W
 
 Each stage's public entry point:
 
-- `lexer::Lexer::new(src).next_token()` / `next_non_trivial()`
+- `lexer::Lexer::new(src).next_token()` / `next_significant()`
 - `parser::parse(src) -> Result<ast::Module>`
 - `semantic::semantic_analysis(&module) -> Result<Semantics>`
 - `compiler::compile(&module, semantics) -> ir::Module`
@@ -191,6 +191,43 @@ The import module name is hardcoded as `"js"`.
 
 ---
 
+## Newline and Statement Separation
+
+Luffy has no mandatory statement terminator. Statements (inside a block) are
+separated by **newlines** or by an explicit **`;`**; multiple statements on one
+line require a `;`. Module **items** (functions, imports) need **no separator**
+at all — each begins with a keyword, so they parse one after another whether on
+separate lines or the same line. Newlines between items are optional, and a `;`
+between items is a parse error.
+
+The mechanism is Swift-style (`isAtStartOfLine`), not a newline token in the
+parser's stream:
+
+- The lexer still produces an `Eol` token from `next_token()`, but the parser
+  (and the lexer tests) drive off `Lexer::next_significant()`, which skips
+  whitespace, comments, **and** `Eol`, recording on the returned token whether
+  a newline was skipped to reach it (`Token::newline_before`).
+- Because the parser never sees `Eol` tokens, newlines are insignificant
+  *everywhere by default* — inside parameter lists, call arguments, groupings,
+  and partially-complete expressions (e.g. a trailing binary operator).
+- Newlines become significant only where the parser explicitly asks:
+  `Parser::expect_statement_separator` checks `newline_before` / `;` /
+  end-of-block after each statement, and `skip_semicolons` consumes runs of `;`
+  inside blocks. `module` requires no separator between items.
+- Disambiguation: a `(` at the **start of a new line** does not continue the
+  previous expression as a call (it begins a new statement). On the same line
+  it is still a call. Binary operators, by contrast, always continue across a
+  newline, so `a\n- b` is subtraction, not two statements.
+
+**Requirement: any new syntax added to the language MUST include parser tests
+for newline handling.** A new construct should be tested both formatted across
+multiple lines and on a single line (with `;` where it separates statements),
+asserting the two parse to the same AST, plus a missing-separator error case
+where relevant. See the "Newline and semicolon handling" section in
+`src/parser/test.rs` for the equivalence-based pattern to follow.
+
+---
+
 ## Operator Precedence (high to low)
 
 | Precedence | Operators                          |
@@ -235,7 +272,7 @@ The typical sequence when adding a language feature (e.g. `if` expressions):
 5. **Compiler** (`src/compiler.rs`): add a match arm in `Compiler::stmt` or `Compiler::expr` to emit IR instructions.
 6. **IR** (`src/ir.rs`): add any new `Instruction` variants needed (e.g. `Block`, `BrIf`).
 7. **Emitter** (`src/emit.rs`): encode the new instructions as Wasm bytes.
-8. **Tests**: add snapshot tests at each layer (`parser/test.rs`, `semantic/test.rs`, `compiler/test.rs`) and an end-to-end execution test in `emit/test.rs`.
+8. **Tests**: add snapshot tests at each layer (`parser/test.rs`, `semantic/test.rs`, `compiler/test.rs`) and an end-to-end execution test in `emit/test.rs`. **Always include newline-handling tests for any new syntax** — verify the construct parses identically across multiple lines and on a single line (using `;` where statements are separated), and that a missing separator is an error. See "Newline and Statement Separation" above.
 9. **Documentation**: update the `language_tour.md` file and `AGENTS.md`
 
 Each layer should be tested in isolation before moving to the next. The snapshot tests make regressions easy to catch.

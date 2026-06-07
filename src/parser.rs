@@ -32,15 +32,13 @@ impl<'src> Parser<'src> {
         let mut lexer = Lexer::new(source);
         Parser {
             source,
-            current: lexer.next_token(),
+            current: lexer.next_significant(),
             lexer,
             id_counter: 0,
         }
     }
 
     fn module(&mut self) -> Result<Module> {
-        self.maybe_eol();
-
         let begin = self.current.span;
         let mut end = begin;
         let mut items = Vec::new();
@@ -49,7 +47,6 @@ impl<'src> Parser<'src> {
             let item = self.item()?;
             end = item.node.span;
             items.push(item);
-            self.maybe_eol();
         }
 
         Ok(Module {
@@ -76,7 +73,6 @@ impl<'src> Parser<'src> {
         let begin = self.current.span;
         let export = self.eat(TokenKind::Export);
         self.expect(TokenKind::Fn)?;
-        // TODO: handle new lines between
         let name =
             self.identifier(|t| format!("Expected function name, found {} instead", t.kind))?;
         self.expect(TokenKind::LParen)?;
@@ -103,7 +99,6 @@ impl<'src> Parser<'src> {
     fn import(&mut self) -> Result<Item> {
         let begin = self.expect(TokenKind::Import)?.span;
         self.expect(TokenKind::Fn)?;
-        // TODO: handle new lines between
         let name =
             self.identifier(|t| format!("Expected function name, found {} instead", t.kind))?;
         self.expect(TokenKind::LParen)?;
@@ -130,7 +125,6 @@ impl<'src> Parser<'src> {
         let mut params = Vec::new();
         if self.current.kind != TokenKind::RParen {
             loop {
-                self.maybe_eol();
                 params.push(self.param()?);
 
                 if !self.eat(TokenKind::Comma) {
@@ -175,7 +169,6 @@ impl<'src> Parser<'src> {
     }
 
     fn statement(&mut self) -> Result<Stmt> {
-        self.maybe_eol();
         match self.current.kind {
             TokenKind::LBrace => self.block(),
             TokenKind::Let => self.declaration(),
@@ -200,6 +193,13 @@ impl<'src> Parser<'src> {
 
         while let Some(precedence) = self.infix_precedence() {
             if precedence < min_precedence {
+                break;
+            }
+            // A `(` at the start of a new line begins a new statement rather
+            // than continuing this expression as a call (Swift-style). On the
+            // same line it is still a call, so multi-line argument lists like
+            // `foo(\n  a,\n  b,\n)` keep working.
+            if self.current.kind == TokenKind::LParen && self.current.newline_before {
                 break;
             }
             prefix = match self.current.kind {
@@ -241,7 +241,6 @@ impl<'src> Parser<'src> {
         let mut args = Vec::new();
         if self.current.kind != TokenKind::RParen {
             loop {
-                self.maybe_eol();
                 args.push(self.expression()?);
 
                 if !self.eat(TokenKind::Comma) {
@@ -439,7 +438,6 @@ impl<'src> Parser<'src> {
     }
 
     fn function_body(&mut self) -> Result<Block> {
-        self.maybe_eol();
         match self.current.kind {
             TokenKind::LBrace => self.braces_block(),
             TokenKind::Colon => self.expr_block(),
@@ -455,14 +453,8 @@ impl<'src> Parser<'src> {
 
     fn braces_block(&mut self) -> Result<Block> {
         let lbrace = self.expect(TokenKind::LBrace)?;
-        self.maybe_eol();
-        let mut statements = Vec::new();
-        while self.current.kind != TokenKind::RBrace {
-            statements.push(self.statement()?);
-            self.maybe_eol();
-        }
+        let statements = self.statements()?;
         let rbrace = self.expect(TokenKind::RBrace)?;
-        self.maybe_eol();
         Ok(Block {
             node: self.node(lbrace.span, rbrace.span),
             kind: BlockKind::Braces { statements },
@@ -471,10 +463,8 @@ impl<'src> Parser<'src> {
 
     fn expr_block(&mut self) -> Result<Block> {
         let colon = self.expect(TokenKind::Colon)?;
-        self.maybe_eol();
         let expr = self.expression()?;
         let end = expr.node.span;
-        self.maybe_eol();
         Ok(Block {
             node: self.node(colon.span, end),
             kind: BlockKind::Expr { expr },
@@ -483,18 +473,26 @@ impl<'src> Parser<'src> {
 
     fn block(&mut self) -> Result<Stmt> {
         let lbrace = self.expect(TokenKind::LBrace)?;
-        self.maybe_eol();
-        let mut statements = Vec::new();
-        while self.current.kind != TokenKind::RBrace {
-            statements.push(self.statement()?);
-            self.maybe_eol();
-        }
+        let statements = self.statements()?;
         let rbrace = self.expect(TokenKind::RBrace)?;
-        self.maybe_eol();
         Ok(Stmt {
             node: self.node(lbrace.span, rbrace.span),
             kind: StmtKind::Block { statements },
         })
+    }
+
+    /// Parses a `}`-terminated list of statements.
+    fn statements(&mut self) -> Result<Vec<Stmt>> {
+        let mut statements = Vec::new();
+        loop {
+            self.skip_semicolons();
+            if matches!(self.current.kind, TokenKind::RBrace | TokenKind::Eof) {
+                break;
+            }
+            statements.push(self.statement()?);
+            self.expect_statement_separator()?;
+        }
+        Ok(statements)
     }
 
     fn return_statement(&mut self) -> Result<Stmt> {
@@ -506,12 +504,33 @@ impl<'src> Parser<'src> {
         })
     }
 
-    fn maybe_eol(&mut self) {
-        while self.eat(TokenKind::Eol) {}
+    fn skip_semicolons(&mut self) {
+        while self.eat(TokenKind::Semicolon) {}
+    }
+
+    /// Requires a separator after a statement: a newline (recorded as
+    /// `newline_before` on the current token), a `;`, or the end of the
+    /// enclosing block (`}` / end of file).
+    fn expect_statement_separator(&mut self) -> Result<()> {
+        if !self.current.newline_before
+            && !matches!(
+                self.current.kind,
+                TokenKind::Semicolon | TokenKind::RBrace | TokenKind::Eof
+            )
+        {
+            return error(
+                self.current.span,
+                format!(
+                    "Expected newline or `;` between statements, found {}",
+                    self.current.kind
+                ),
+            );
+        }
+        Ok(())
     }
 
     fn advance(&mut self) {
-        self.current = self.lexer.next_non_trivial();
+        self.current = self.lexer.next_significant();
     }
 
     fn eat(&mut self, kind: TokenKind) -> bool {

@@ -62,6 +62,13 @@ fn punctuations() {
 }
 
 #[test]
+fn semicolon() {
+    // New token: used as an explicit statement separator by the parser.
+    // Snapshot left empty: run `cargo insta review` to regenerate.
+    assert_snapshot!(tokens("; ;;"), @"[ `;`  `;`  `;` ]");
+}
+
+#[test]
 fn numbers() {
     assert_snapshot!(
         tokens("1 2 1000 -1 1.0 0.1"),
@@ -91,10 +98,7 @@ fn tokens(input: &str) -> Tokens {
     let mut result = Vec::new();
     let mut lexer = Lexer::new(input);
     loop {
-        let token = lexer.next_non_trivial();
-        if let TokenKind::Eol = token.kind {
-            continue;
-        }
+        let token = lexer.next_significant();
         if let TokenKind::Eof = token.kind {
             break;
         }

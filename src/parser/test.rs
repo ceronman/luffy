@@ -812,19 +812,17 @@ fn error_unexpected_token_in_expression() {
 
 #[test]
 fn error_unclosed_call_parenthesis() {
-    // The wrapper adds a newline after the expression, so the parser
-    // hits an Eol token rather than Eof when the closing paren is absent.
-    assert_snapshot!(parse_expr("foo(1, 2"), @"
-    foo(1, 2
-            ^ ─── Expected `)`, got <End of line>
+    assert_snapshot!(parse_module("fn foo() { foo(1, 2 }"), @"
+    fn foo() { foo(1, 2 }
+                        ^ ─── Expected `)`, got `}`
     ");
 }
 
 #[test]
 fn error_unclosed_grouping_parenthesis() {
-    assert_snapshot!(parse_expr("(1 + 2"), @"
-    (1 + 2
-          ^ ─── Expected `)`, got <End of line>
+    assert_snapshot!(parse_module("fn foo() { foo(1, 2 }"), @"
+    fn foo() { foo(1, 2 }
+                        ^ ─── Expected `)`, got `}`
     ");
 }
 
@@ -967,5 +965,541 @@ fn double_not() {
     Unary [not]
     └── Unary [not]
         └── Var [a]
+    ");
+}
+
+// --- Statements: newlines and semicolons as separators ------------------------
+
+#[test]
+fn statements_separated_by_newlines() {
+    let src = r#"
+        fn f() {
+            let x Int = 1
+            let y Int = 2
+            return x
+        }
+    "#;
+    assert_snapshot!(parse_module(src), @"
+    Module
+    └── Function [f]
+        ├── Export [false]
+        ├── Parameters
+        ├── Return
+        │   └── Unit
+        └── Body
+            └── Block
+                ├── VarDeclaration [x]
+                │   ├── Type
+                │   │   └── Int
+                │   └── Int[1]
+                ├── VarDeclaration [y]
+                │   ├── Type
+                │   │   └── Int
+                │   └── Int[2]
+                └── Return
+                    └── Var [x]
+    ");
+}
+
+#[test]
+fn statements_separated_by_semicolons_on_one_line() {
+    let src = r#"
+        fn f() { let x Int = 1; let y Int = 2; return x }
+    "#;
+    assert_snapshot!(parse_module(src), @"
+    Module
+    └── Function [f]
+        ├── Export [false]
+        ├── Parameters
+        ├── Return
+        │   └── Unit
+        └── Body
+            └── Block
+                ├── VarDeclaration [x]
+                │   ├── Type
+                │   │   └── Int
+                │   └── Int[1]
+                ├── VarDeclaration [y]
+                │   ├── Type
+                │   │   └── Int
+                │   └── Int[2]
+                └── Return
+                    └── Var [x]
+    ");
+}
+
+#[test]
+fn statements_mixing_newlines_and_semicolons() {
+    let src = r#"
+        fn f() {
+            let x Int = 1; let y Int = 2
+            return x
+        }
+    "#;
+    assert_snapshot!(parse_module(src), @"
+    Module
+    └── Function [f]
+        ├── Export [false]
+        ├── Parameters
+        ├── Return
+        │   └── Unit
+        └── Body
+            └── Block
+                ├── VarDeclaration [x]
+                │   ├── Type
+                │   │   └── Int
+                │   └── Int[1]
+                ├── VarDeclaration [y]
+                │   ├── Type
+                │   │   └── Int
+                │   └── Int[2]
+                └── Return
+                    └── Var [x]
+    ");
+}
+
+#[test]
+fn trailing_and_repeated_semicolons_are_ignored() {
+    // Leading, repeated, and trailing semicolons produce no empty statements.
+    let src = r#"
+        fn f() {
+            ;;
+            let x Int = 1 ;;;
+            return x ;;
+        }
+    "#;
+    assert_snapshot!(parse_module(src), @"
+    Module
+    └── Function [f]
+        ├── Export [false]
+        ├── Parameters
+        ├── Return
+        │   └── Unit
+        └── Body
+            └── Block
+                ├── VarDeclaration [x]
+                │   ├── Type
+                │   │   └── Int
+                │   └── Int[1]
+                └── Return
+                    └── Var [x]
+    ");
+}
+
+#[test]
+fn blank_lines_between_statements_are_ignored() {
+    let src = r#"
+        fn f() {
+
+
+            let x Int = 1
+
+
+            return x
+
+        }
+    "#;
+    assert_snapshot!(parse_module(src), @"
+    Module
+    └── Function [f]
+        ├── Export [false]
+        ├── Parameters
+        ├── Return
+        │   └── Unit
+        └── Body
+            └── Block
+                ├── VarDeclaration [x]
+                │   ├── Type
+                │   │   └── Int
+                │   └── Int[1]
+                └── Return
+                    └── Var [x]
+    ");
+}
+
+// --- Items: newlines and semicolons as separators -----------------------------
+
+#[test]
+fn items_separated_by_newlines() {
+    let src = r#"
+        fn a() { return 1 }
+        fn b() { return 2 }
+    "#;
+    assert_snapshot!(parse_module(src), @"
+    Module
+    ├── Function [a]
+    │   ├── Export [false]
+    │   ├── Parameters
+    │   ├── Return
+    │   │   └── Unit
+    │   └── Body
+    │       └── Block
+    │           └── Return
+    │               └── Int[1]
+    └── Function [b]
+        ├── Export [false]
+        ├── Parameters
+        ├── Return
+        │   └── Unit
+        └── Body
+            └── Block
+                └── Return
+                    └── Int[2]
+    ");
+}
+
+#[test]
+fn items_without_separator_on_one_line() {
+    // Items need no separator at all — they parse one after another.
+    let src = r#"
+        fn a() { return 1 } fn b() { return 2 }
+    "#;
+    assert_snapshot!(parse_module(src), @"
+    Module
+    ├── Function [a]
+    │   ├── Export [false]
+    │   ├── Parameters
+    │   ├── Return
+    │   │   └── Unit
+    │   └── Body
+    │       └── Block
+    │           └── Return
+    │               └── Int[1]
+    └── Function [b]
+        ├── Export [false]
+        ├── Parameters
+        ├── Return
+        │   └── Unit
+        └── Body
+            └── Block
+                └── Return
+                    └── Int[2]
+    ");
+}
+
+#[test]
+fn error_semicolon_between_items() {
+    // `;` is not valid between items (it is not an item keyword).
+    let src = r#"
+        fn a() { return 1 }; fn b() { return 2 }
+    "#;
+    assert_snapshot!(parse_module(src), @"
+    fn a() { return 1 }; fn b() { return 2 }
+                       ^ ─── Expected item declaration, found `;` instead
+    ");
+}
+
+#[test]
+fn error_leading_semicolon_at_module_level() {
+    // A stray `;` before the first item is a parse error, not an empty item.
+    let src = r#"
+        ; fn a() { return 1 }
+    "#;
+    assert_snapshot!(parse_module(src), @"
+    ; fn a() { return 1 }
+    ^ ─── Expected item declaration, found `;` instead
+    ");
+}
+
+#[test]
+fn blank_and_leading_lines_at_module_level_are_ignored() {
+    let src = r#"
+
+
+
+        import fn log(n Int)
+
+
+        fn a() { return 1 }
+
+    "#;
+    assert_snapshot!(parse_module(src), @"
+    Module
+    ├── Import [log]
+    │   ├── Parameters
+    │   │   └── Param
+    │   │       ├── Name
+    │   │       │   └── n
+    │   │       └── Type
+    │   │           └── Int
+    │   └── Return
+    │       └── Unit
+    └── Function [a]
+        ├── Export [false]
+        ├── Parameters
+        ├── Return
+        │   └── Unit
+        └── Body
+            └── Block
+                └── Return
+                    └── Int[1]
+    ");
+}
+
+// --- Newlines are insignificant inside delimited / incomplete constructs -------
+
+#[test]
+fn newlines_within_function_signature() {
+    // Newlines may appear between `fn` and the name, inside the parameter list,
+    // before the return type, and before the body `{`.
+    let src = r#"
+        fn
+        add(
+            a Int,
+            b Int
+        ) Int
+        {
+            return a + b
+        }
+    "#;
+    assert_snapshot!(parse_module(src), @"
+    Module
+    └── Function [add]
+        ├── Export [false]
+        ├── Parameters
+        │   ├── Param
+        │   │   ├── Name
+        │   │   │   └── a
+        │   │   └── Type
+        │   │       └── Int
+        │   └── Param
+        │       ├── Name
+        │       │   └── b
+        │       └── Type
+        │           └── Int
+        ├── Return
+        │   └── Int
+        └── Body
+            └── Block
+                └── Return
+                    └── Binary [+]
+                        ├── Var [a]
+                        └── Var [b]
+    ");
+}
+
+#[test]
+fn newlines_within_call_arguments() {
+    let src = r#"
+        fn f() {
+            foo(
+                1,
+                2,
+                3
+            )
+        }
+    "#;
+    assert_snapshot!(parse_module(src), @"
+    Module
+    └── Function [f]
+        ├── Export [false]
+        ├── Parameters
+        ├── Return
+        │   └── Unit
+        └── Body
+            └── Block
+                └── Call
+                    ├── Var [foo]
+                    └── Args
+                        ├── Int[1]
+                        ├── Int[2]
+                        └── Int[3]
+    ");
+}
+
+#[test]
+fn newlines_within_grouping() {
+    let src = r#"
+        fn f() {
+            (
+                1 + 2
+            )
+        }
+    "#;
+    assert_snapshot!(parse_module(src), @"
+    Module
+    └── Function [f]
+        ├── Export [false]
+        ├── Parameters
+        ├── Return
+        │   └── Unit
+        └── Body
+            └── Block
+                └── Binary [+]
+                    ├── Int[1]
+                    └── Int[2]
+    ");
+}
+
+#[test]
+fn colon_body_spanning_lines() {
+    let src = r#"
+        fn answer() Int:
+            1 + 2
+    "#;
+    assert_snapshot!(parse_module(src), @"
+    Module
+    └── Function [answer]
+        ├── Export [false]
+        ├── Parameters
+        ├── Return
+        │   └── Int
+        └── Body
+            └── ExprBlock
+                └── Binary [+]
+                    ├── Int[1]
+                    └── Int[2]
+    ");
+}
+
+#[test]
+fn trailing_operator_continues_across_newline() {
+    // An expression that is obviously incomplete at the end of a line (trailing
+    // binary operator) continues on the next line: this is a single `1 + 2`.
+    let src = r#"
+        fn f() {
+            1 +
+            2
+        }
+    "#;
+    assert_snapshot!(parse_module(src), @"
+    Module
+    └── Function [f]
+        ├── Export [false]
+        ├── Parameters
+        ├── Return
+        │   └── Unit
+        └── Body
+            └── Block
+                └── Binary [+]
+                    ├── Int[1]
+                    └── Int[2]
+    ");
+}
+
+#[test]
+fn leading_operator_continues_across_newline() {
+    // Design choice: binary operators continue the expression even when placed
+    // at the start of the next line, so this is a single comparison `a == b`.
+    let src = r#"
+        fn f() {
+            a
+            == b
+        }
+    "#;
+    assert_snapshot!(parse_module(src), @"
+    Module
+    └── Function [f]
+        ├── Export [false]
+        ├── Parameters
+        ├── Return
+        │   └── Unit
+        └── Body
+            └── Block
+                └── Binary [==]
+                    ├── Var [a]
+                    └── Var [b]
+    ");
+}
+
+#[test]
+fn minus_on_next_line_is_subtraction() {
+    // The ambiguous case: a leading `-` continues as subtraction (`a - b`); it
+    // does NOT start a new `-b` statement.
+    let src = r#"
+        fn f() {
+            a
+            - b
+        }
+    "#;
+    assert_snapshot!(parse_module(src), @"
+    Module
+    └── Function [f]
+        ├── Export [false]
+        ├── Parameters
+        ├── Return
+        │   └── Unit
+        └── Body
+            └── Block
+                └── Binary [-]
+                    ├── Var [a]
+                    └── Var [b]
+    ");
+}
+
+// --- Disambiguation: `(` at the start of a line is not a call -----------------
+
+#[test]
+fn open_paren_on_next_line_starts_a_new_statement() {
+    // `foo` and `(1 + 2)` are two separate statements, because the `(` begins a
+    // new line. Compare with `open_paren_on_same_line_is_a_call`.
+    let src = r#"
+        fn f() {
+            foo
+            (1 + 2)
+        }
+    "#;
+    assert_snapshot!(parse_module(src), @"
+    Module
+    └── Function [f]
+        ├── Export [false]
+        ├── Parameters
+        ├── Return
+        │   └── Unit
+        └── Body
+            └── Block
+                ├── Var [foo]
+                └── Binary [+]
+                    ├── Int[1]
+                    └── Int[2]
+    ");
+}
+
+#[test]
+fn open_paren_on_same_line_is_a_call() {
+    let src = r#"
+        fn f() {
+            foo(1 + 2)
+        }
+    "#;
+    assert_snapshot!(parse_module(src), @"
+    Module
+    └── Function [f]
+        ├── Export [false]
+        ├── Parameters
+        ├── Return
+        │   └── Unit
+        └── Body
+            └── Block
+                └── Call
+                    ├── Var [foo]
+                    └── Args
+                        └── Binary [+]
+                            ├── Int[1]
+                            └── Int[2]
+    ");
+}
+
+// --- Missing separators are errors --------------------------------------------
+
+#[test]
+fn error_two_declarations_on_one_line_without_separator() {
+    let src = r#"
+        fn f() { let x Int = 1 let y Int = 2 }
+    "#;
+    assert_snapshot!(parse_module(src), @"
+    fn f() { let x Int = 1 let y Int = 2 }
+                           ^^^ ─── Expected newline or `;` between statements, found `let`
+    ");
+}
+
+#[test]
+fn error_two_expression_statements_without_separator() {
+    let src = r#"
+        fn f() { foo() bar() }
+    "#;
+    assert_snapshot!(parse_module(src), @"
+    fn f() { foo() bar() }
+                   ^^^ ─── Expected newline or `;` between statements, found <Identifier>
     ");
 }
