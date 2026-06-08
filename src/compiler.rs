@@ -128,11 +128,7 @@ impl Compiler {
     fn stmt(&self, ins: &mut Vec<ir::Instruction>, stmt: &ast::Stmt) {
         match &stmt.kind {
             ast::StmtKind::ExprStmt { expr } => {
-                self.expr(ins, expr);
-                let ty = self.node_type(expr.node);
-                if !ty.is_unit() {
-                    ins.push(ir::Instruction::Drop);
-                }
+                self.expr_stmt(ins, expr);
             }
             ast::StmtKind::Declaration {
                 name,
@@ -168,7 +164,16 @@ impl Compiler {
                 self.expr(ins, condition);
                 ins.push(ir::Instruction::I32Eqz);
                 ins.push(ir::Instruction::BrIf(1));
-                self.loop_body(ins, body);
+                match &body.kind {
+                    ast::BlockKind::Braces { statements } => {
+                        for stmt in statements {
+                            self.stmt(ins, stmt);
+                        }
+                    }
+                    ast::BlockKind::Expr { expr } => {
+                        self.expr_stmt(ins, expr);
+                    }
+                }
                 ins.push(ir::Instruction::Br(0));
                 ins.push(ir::Instruction::End);
                 ins.push(ir::Instruction::End);
@@ -179,19 +184,10 @@ impl Compiler {
         }
     }
 
-    fn loop_body(&self, ins: &mut Vec<ir::Instruction>, block: &ast::Block) {
-        match &block.kind {
-            ast::BlockKind::Braces { statements } => {
-                for stmt in statements {
-                    self.stmt(ins, stmt);
-                }
-            }
-            ast::BlockKind::Expr { expr } => {
-                self.expr(ins, expr);
-                if !self.node_type(expr.node).is_unit() {
-                    ins.push(ir::Instruction::Drop);
-                }
-            }
+    fn expr_stmt(&self, ins: &mut Vec<ir::Instruction>, expr: &ast::Expr) {
+        self.expr(ins, expr);
+        if !self.node_type(expr.node).is_unit() {
+            ins.push(ir::Instruction::Drop);
         }
     }
 
@@ -316,15 +312,17 @@ impl Compiler {
     fn branch(&self, ins: &mut Vec<ir::Instruction>, block: &ast::Block) {
         match &block.kind {
             ast::BlockKind::Braces { statements } => {
-                for (i, stmt) in statements.iter().enumerate() {
-                    let is_last = i + 1 == statements.len();
-                    if let ast::StmtKind::ExprStmt { expr } = &stmt.kind
-                        && is_last
-                    {
-                        self.expr(ins, expr);
-                        return;
+                if let Some((last, rest)) = statements.split_last() {
+                    for stmt in rest {
+                        self.stmt(ins, stmt);
                     }
-                    self.stmt(ins, stmt);
+                    // If the last statement is an expression statement, we want to simply
+                    // evaluate it, normal `stmt` will drop the value from the stack.
+                    if let ast::StmtKind::ExprStmt { expr } = &last.kind {
+                        self.expr(ins, expr);
+                    } else {
+                        self.stmt(ins, last);
+                    }
                 }
             }
             ast::BlockKind::Expr { expr } => self.expr(ins, expr),

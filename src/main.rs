@@ -10,10 +10,15 @@ pub mod semantic;
 
 fn main() {
     let code = r#"
-        fn and_op(a Bool, b Bool) Bool { return a and b }
-        fn or_op(a Bool, b Bool) Bool { return a or b }
-        fn not_op(a Bool) Bool { not a }
-        export fn main() {}
+        import fn print_int(a Int)
+        fn foo() Int {
+            print_int(256)
+            return 1
+        }
+        export fn main() {
+            foo()
+            print_int(64)
+        }
     "#;
 
     let module = match parser::parse(code) {
