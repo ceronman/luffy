@@ -718,3 +718,123 @@ fn while_colon_body_drops_value() {
     )
     "#);
 }
+
+// ── `break` / `continue` compilation ──────────────────────────────────────────
+
+#[test]
+fn break_branches_out_of_loop_block() {
+    // `break` at the top of the loop body branches to the outer `block`
+    // (label 1 from inside the `loop`).
+    let src = r#"
+        export fn main() {
+            let a Int = 0
+            while a > 0 {
+                break
+            }
+        }
+    "#;
+    assert_snapshot!(compile_to_wat(src), @r#"
+    (module
+      (type (;0;) (func))
+      (export "main" (func 0))
+      (func (;0;) (type 0)
+        (local i64)
+        i64.const 0
+        local.set 0
+        block ;; label = @1
+          loop ;; label = @2
+            local.get 0
+            i64.const 0
+            i64.gt_s
+            i32.eqz
+            br_if 1 (;@1;)
+            br 1 (;@1;)
+            br 0 (;@2;)
+          end
+        end
+      )
+    )
+    "#);
+}
+
+#[test]
+fn continue_branches_to_loop() {
+    // `continue` jumps back to the `loop` header (label 0).
+    let src = r#"
+        export fn main() {
+            let a Int = 0
+            while a > 0 {
+                continue
+            }
+        }
+    "#;
+    assert_snapshot!(compile_to_wat(src), @r#"
+    (module
+      (type (;0;) (func))
+      (export "main" (func 0))
+      (func (;0;) (type 0)
+        (local i64)
+        i64.const 0
+        local.set 0
+        block ;; label = @1
+          loop ;; label = @2
+            local.get 0
+            i64.const 0
+            i64.gt_s
+            i32.eqz
+            br_if 1 (;@1;)
+            br 0 (;@2;)
+            br 0 (;@2;)
+          end
+        end
+      )
+    )
+    "#);
+}
+
+#[test]
+fn break_nested_in_if_uses_deeper_label() {
+    // From inside `block`/`loop`/`if`, `break` must branch two frames out
+    // (label 2) and `continue` one frame out (label 1).
+    let src = r#"
+        export fn main() {
+            let a Int = 0
+            while a > 0 {
+                if a > 5 {
+                    break
+                } else {
+                    continue
+                }
+            }
+        }
+    "#;
+    assert_snapshot!(compile_to_wat(src), @r#"
+    (module
+      (type (;0;) (func))
+      (export "main" (func 0))
+      (func (;0;) (type 0)
+        (local i64)
+        i64.const 0
+        local.set 0
+        block ;; label = @1
+          loop ;; label = @2
+            local.get 0
+            i64.const 0
+            i64.gt_s
+            i32.eqz
+            br_if 1 (;@1;)
+            local.get 0
+            i64.const 5
+            i64.gt_s
+            if ;; label = @3
+              br 2 (;@1;)
+            else
+              br 1 (;@2;)
+            end
+            br 0 (;@2;)
+          end
+        end
+      )
+    )
+    "#);
+}

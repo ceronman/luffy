@@ -155,6 +155,8 @@ impl PrettyAst {
                 }
                 Self::new("If", children)
             }
+            ExprKind::Break => Self::new("Break", vec![]),
+            ExprKind::Continue => Self::new("Continue", vec![]),
         }
     }
 

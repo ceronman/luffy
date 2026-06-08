@@ -199,6 +199,8 @@ impl<'src> Parser<'src> {
             TokenKind::Identifier => self.variable()?,
             TokenKind::Not | TokenKind::Minus => self.unary_expr()?,
             TokenKind::If => self.if_expr()?,
+            TokenKind::Break => self.break_expr()?,
+            TokenKind::Continue => self.continue_expr()?,
 
             other_kind => {
                 return error(self.current.span, format!("Unexpected {}", other_kind));
@@ -517,6 +519,22 @@ impl<'src> Parser<'src> {
                 then_branch: then_branch.into(),
                 else_branch,
             },
+        })
+    }
+
+    fn break_expr(&mut self) -> Result<Expr> {
+        let kw = self.expect(TokenKind::Break)?;
+        Ok(Expr {
+            node: self.node(kw.span, kw.span),
+            kind: ExprKind::Break,
+        })
+    }
+
+    fn continue_expr(&mut self) -> Result<Expr> {
+        let kw = self.expect(TokenKind::Continue)?;
+        Ok(Expr {
+            node: self.node(kw.span, kw.span),
+            kind: ExprKind::Continue,
         })
     }
 

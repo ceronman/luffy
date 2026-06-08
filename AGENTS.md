@@ -133,6 +133,8 @@ enum ExprKind {
     Binary   { op: BinOp, left: Box<Expr>, right: Box<Expr> },
     Call     { callee: Box<Expr>, args: Vec<Expr> },
     If       { condition: Box<Expr>, then_branch: Box<Block>, else_branch: Option<Box<Block>> },
+    Break,                                                   // break (Unit; loops only)
+    Continue,                                                // continue (Unit; loops only)
 }
 ```
 
@@ -168,7 +170,14 @@ This statement-vs-expression `else` rule matches Kotlin. The `Resolver` tracks t
   end
   ```
 
-  The body is lowered by `Compiler::loop_body`, which keeps the operand stack balanced: a braces body runs each statement through `stmt` (expression statements already drop their non-`Unit` values), and a colon body evaluates its single expression and drops the value if non-`Unit`. The new IR instructions `Block`, `Loop`, `Br(LabelIdx)`, and `BrIf(LabelIdx)` are encoded in `emit.rs`.
+  The body is lowered keeping the operand stack balanced: a braces body runs each statement through `stmt` (expression statements already drop their non-`Unit` values), and a colon body is lowered via `expr_stmt`, which drops the value if non-`Unit`. The new IR instructions `Block`, `Loop`, `Br(LabelIdx)`, and `BrIf(LabelIdx)` are encoded in `emit.rs`.
+
+#### `break` / `continue`
+
+`break` and `continue` are `ExprKind::Break` / `ExprKind::Continue` — value-less expressions of type `Unit`, parsed as prefixes in `expression_precedence` (`Parser::break_expr` / `continue_expr`). Being `Unit` expressions, they double as statements (an `ExprStmt`) and may appear in any expression slot, e.g. a colon `if` branch.
+
+- **Semantic**: the `Resolver` tracks `loop_depth`, incremented around a `while` body. The `ExprKind::Break` / `Continue` arms in `Resolver::expr` give type `Unit` and error ("'break' outside of a loop") when `loop_depth == 0`.
+- **Compiler**: Wasm `br` takes a *relative* label index, so the compiler tracks `control_depth` (the count of open `block`/`loop`/`if` frames — incremented around the `While` arm's block+loop, the `If` arm, and the `and`/`or` short-circuit `if`s) and a `loop_stack` of `LoopFrame { break_target, continue_target }` recording each loop's frame indices. `break`/`continue` lower to `Br((control_depth - 1) - target)`, which is correct at any nesting depth (e.g. `break` from inside an `if` in the body emits `br 2`). Because of this state, the body-lowering methods (`function`, `block`, `stmt`, `expr`, `branch`, `expr_stmt`) take `&mut self`; `function` resets `control_depth`/`loop_stack` per function.
 
 ### Types
 

@@ -1822,3 +1822,54 @@ fn error_while_body_missing_block_or_colon() {
                         ^^^^^^^^^ ─── Expected `{` or `:` for `while` body, found <Identifier> instead
     ");
 }
+
+// ── `break` / `continue` tests ────────────────────────────────────────────────
+
+#[test]
+fn break_parses_as_expression() {
+    assert_snapshot!(parse_expr("break"), @"Break");
+}
+
+#[test]
+fn continue_parses_as_expression() {
+    assert_snapshot!(parse_expr("continue"), @"Continue");
+}
+
+#[test]
+fn while_with_break_and_continue() {
+    let src = r#"while a > 0 {
+        if a > 5 { break }
+        if a > 2 { continue }
+        a = a - 1
+    }"#;
+    assert_snapshot!(parse_stmt(src), @"
+    While
+    ├── Condition
+    │   └── Binary [>]
+    │       ├── Var [a]
+    │       └── Int[0]
+    └── Body
+        └── Block
+            ├── If
+            │   ├── Condition
+            │   │   └── Binary [>]
+            │   │       ├── Var [a]
+            │   │       └── Int[5]
+            │   └── Then
+            │       └── Block
+            │           └── Break
+            ├── If
+            │   ├── Condition
+            │   │   └── Binary [>]
+            │   │       ├── Var [a]
+            │   │       └── Int[2]
+            │   └── Then
+            │       └── Block
+            │           └── Continue
+            └── Assign
+                ├── Var [a]
+                └── Binary [-]
+                    ├── Var [a]
+                    └── Int[1]
+    ");
+}

@@ -465,3 +465,48 @@ fn while_loop_with_inner_local() {
     "#;
     assert_snapshot!(run_main(body), @"6");
 }
+
+// ── `break` / `continue` execution ────────────────────────────────────────────
+
+#[test]
+fn break_exits_loop_early() {
+    let body = r#"
+        let i Int = 0
+        while i < 10 {
+            if i == 3 {
+                break
+            }
+            print_int(i)
+            i = i + 1
+        }
+        print_int(99)
+    "#;
+    assert_snapshot!(run_main(body), @"
+    0
+    1
+    2
+    99
+    ");
+}
+
+#[test]
+fn continue_skips_rest_of_body() {
+    // `i` is incremented before the `continue`, so the loop still terminates;
+    // the iteration where `i == 3` skips the `print_int`.
+    let body = r#"
+        let i Int = 0
+        while i < 5 {
+            i = i + 1
+            if i == 3 {
+                continue
+            }
+            print_int(i)
+        }
+    "#;
+    assert_snapshot!(run_main(body), @"
+    1
+    2
+    4
+    5
+    ");
+}

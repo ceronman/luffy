@@ -136,6 +136,8 @@ pub enum ExprKind {
         then_branch: Box<Block>,
         else_branch: Option<Box<Block>>,
     },
+    Break,
+    Continue,
 }
 
 #[derive(Debug)]

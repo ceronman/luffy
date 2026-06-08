@@ -73,6 +73,7 @@ type Scope = HashMap<Symbol, DeclarationId>;
 struct Resolver {
     scopes: VecDeque<Scope>,
     semantics: Semantics,
+    loop_depth: u32,
 }
 
 pub type Result<T> = std::result::Result<T, CompilerError>;
@@ -240,7 +241,10 @@ impl Resolver {
             }
             StmtKind::While { condition, body } => {
                 self.check_condition(condition, func_id, "while")?;
-                self.block_type(body, func_id)?;
+                self.loop_depth += 1;
+                let result = self.block_type(body, func_id);
+                self.loop_depth -= 1;
+                result?;
                 Type::Unit
             }
             StmtKind::Return { expr } => {
@@ -364,6 +368,18 @@ impl Resolver {
                 true,
                 func_id,
             )?,
+            ExprKind::Break => {
+                if self.loop_depth == 0 {
+                    return resolve_err(expr.node.span, "'break' outside of a loop");
+                }
+                Type::Unit
+            }
+            ExprKind::Continue => {
+                if self.loop_depth == 0 {
+                    return resolve_err(expr.node.span, "'continue' outside of a loop");
+                }
+                Type::Unit
+            }
         };
         self.semantics.expr_types.insert(expr.node.id, ty.clone());
         Ok(ty)
@@ -519,10 +535,7 @@ impl TypeRef {
 }
 
 pub fn semantic_analysis(module: &Module) -> Result<Semantics> {
-    let mut resolver = Resolver {
-        scopes: Default::default(),
-        semantics: Default::default(),
-    };
+    let mut resolver = Resolver::default();
 
     resolver.module(module)?;
 

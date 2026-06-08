@@ -7,7 +7,7 @@ fn check(src: &str) -> String {
             Ok(_) => "<no error>".to_string(),
             Err(e) => pretty::annotate_error_single(src, &e),
         },
-        Err(e) => format!("PARSE ERROR: {}", pretty::annotate_error_single(src, &e)),
+        Err(e) => pretty::annotate_error_single(src, &e),
     }
 }
 
@@ -586,5 +586,45 @@ fn error_while_condition_not_bool() {
     assert_snapshot!(check("fn f(a Int) { while a { a = a - 1 } }"), @"
     fn f(a Int) { while a { a = a - 1 } }
                         ^ ─── Condition of 'while' must be 'Bool', found 'Int'
+    ");
+}
+
+// ── `break` / `continue` tests ────────────────────────────────────────────────
+
+#[test]
+fn valid_break_in_while() {
+    assert_snapshot!(check("fn f(a Int) { while a > 0 { break } }"), @"<no error>");
+}
+
+#[test]
+fn valid_continue_in_while() {
+    assert_snapshot!(check("fn f(a Int) { while a > 0 { a = a - 1; continue } }"), @"<no error>");
+}
+
+#[test]
+fn valid_break_nested_in_if() {
+    let src = r#"
+        fn f(a Int) {
+            while a > 0 {
+                if a > 5 { break }
+                a = a - 1
+            }
+        }"#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn error_break_outside_loop() {
+    assert_snapshot!(check("fn f() { break }"), @"
+    fn f() { break }
+             ^^^^^ ─── 'break' outside of a loop
+    ");
+}
+
+#[test]
+fn error_continue_outside_loop() {
+    assert_snapshot!(check("fn f() { continue }"), @"
+    fn f() { continue }
+             ^^^^^^^^ ─── 'continue' outside of a loop
     ");
 }

@@ -4,12 +4,84 @@ mod test;
 use crate::ast::ItemKind;
 use crate::semantic::{Declaration, DeclarationId, DeclarationKind, Semantics, Type};
 use crate::{ast, ir};
-use std::collections::HashMap;
+use std::collections::{HashMap, VecDeque};
 
+#[derive(Default)]
 struct Compiler {
     local_addresses: HashMap<DeclarationId, ir::LocalIdx>,
     func_addresses: HashMap<DeclarationId, ir::FuncIdx>,
     semantics: Semantics,
+    loops: Loops,
+}
+
+/// Tracks the open Wasm control frames while lowering a function body so that
+/// `break`/`continue` can compute their relative branch label indices.
+#[derive(Default)]
+struct Loops {
+    /// Number of structured control frames (`block`/`loop`/`if`) currently open.
+    depth: u32,
+    /// Enclosing loops. The back of the deque is the innermost loop — the target
+    /// of `break`/`continue`.
+    stack: VecDeque<LoopFrame>,
+}
+
+struct LoopFrame {
+    break_target: u32,
+    continue_target: u32,
+}
+
+impl Loops {
+    fn reset(&mut self) {
+        self.depth = 0;
+        self.stack.clear();
+    }
+
+    /// Opens a non-loop control frame (an `if`, or an `and`/`or` short-circuit block).
+    fn enter_frame(&mut self) {
+        self.depth += 1;
+    }
+
+    fn exit_frame(&mut self) {
+        self.depth -= 1;
+    }
+
+    /// Opens a loop's outer `block` and inner `loop` frames and records the loop
+    /// as the current `break`/`continue` target.
+    fn enter_loop(&mut self) {
+        let base = self.depth;
+        // `break` exits the outer `block` (frame `base`); `continue` jumps to the
+        // inner `loop` (frame `base + 1`).
+        self.stack.push_back(LoopFrame {
+            break_target: base,
+            continue_target: base + 1,
+        });
+        self.depth += 2;
+    }
+
+    fn exit_loop(&mut self) {
+        self.stack.pop_back();
+        self.depth -= 2;
+    }
+
+    /// Relative label index for `break` (branches out of the innermost loop's `block`).
+    fn break_label(&self) -> ir::LabelIdx {
+        let target = self
+            .stack
+            .back()
+            .expect("`break` outside of a loop")
+            .break_target;
+        (self.depth - 1) - target
+    }
+
+    /// Relative label index for `continue` (branches back to the innermost `loop`).
+    fn continue_label(&self) -> ir::LabelIdx {
+        let target = self
+            .stack
+            .back()
+            .expect("`continue` outside of a loop")
+            .continue_target;
+        (self.depth - 1) - target
+    }
 }
 
 impl Compiler {
@@ -90,7 +162,7 @@ impl Compiler {
     }
 
     fn function(
-        &self,
+        &mut self,
         ty: ir::TypeIdx,
         name: &ast::Identifier,
         params: &[ast::Param],
@@ -102,6 +174,8 @@ impl Compiler {
             .skip(params.len())
             .map(|d| d.ty.lower())
             .collect::<Vec<ir::ValType>>();
+        // Each function body starts with a clean control-frame state.
+        self.loops.reset();
         let mut ins = Vec::new();
         self.block(&mut ins, body);
         ins.push(ir::Instruction::End);
@@ -112,7 +186,7 @@ impl Compiler {
         }
     }
 
-    fn block(&self, ins: &mut Vec<ir::Instruction>, block: &ast::Block) {
+    fn block(&mut self, ins: &mut Vec<ir::Instruction>, block: &ast::Block) {
         match &block.kind {
             ast::BlockKind::Braces { statements } => {
                 for stmt in statements {
@@ -125,7 +199,7 @@ impl Compiler {
         }
     }
 
-    fn stmt(&self, ins: &mut Vec<ir::Instruction>, stmt: &ast::Stmt) {
+    fn stmt(&mut self, ins: &mut Vec<ir::Instruction>, stmt: &ast::Stmt) {
         match &stmt.kind {
             ast::StmtKind::ExprStmt { expr } => {
                 self.expr_stmt(ins, expr);
@@ -161,6 +235,7 @@ impl Compiler {
                 //   end
                 ins.push(ir::Instruction::Block(ir::BlockType::Empty));
                 ins.push(ir::Instruction::Loop(ir::BlockType::Empty));
+                self.loops.enter_loop();
                 self.expr(ins, condition);
                 ins.push(ir::Instruction::I32Eqz);
                 ins.push(ir::Instruction::BrIf(1));
@@ -175,6 +250,7 @@ impl Compiler {
                     }
                 }
                 ins.push(ir::Instruction::Br(0));
+                self.loops.exit_loop();
                 ins.push(ir::Instruction::End);
                 ins.push(ir::Instruction::End);
             }
@@ -184,14 +260,14 @@ impl Compiler {
         }
     }
 
-    fn expr_stmt(&self, ins: &mut Vec<ir::Instruction>, expr: &ast::Expr) {
+    fn expr_stmt(&mut self, ins: &mut Vec<ir::Instruction>, expr: &ast::Expr) {
         self.expr(ins, expr);
         if !self.node_type(expr.node).is_unit() {
             ins.push(ir::Instruction::Drop);
         }
     }
 
-    fn expr(&self, ins: &mut Vec<ir::Instruction>, expr: &ast::Expr) {
+    fn expr(&mut self, ins: &mut Vec<ir::Instruction>, expr: &ast::Expr) {
         match &expr.kind {
             ast::ExprKind::Literal { kind } => match kind {
                 ast::LiteralKind::Int(value) => ins.push(ir::Instruction::I64Const(*value)),
@@ -226,19 +302,23 @@ impl Compiler {
                     ast::BinOpKind::And => {
                         self.expr(ins, left);
                         ins.push(ir::Instruction::If(ir::BlockType::Result(ir::ValType::I32)));
+                        self.loops.enter_frame();
                         self.expr(ins, right);
                         ins.push(ir::Instruction::Else);
                         ins.push(ir::Instruction::I32Const(0));
                         ins.push(ir::Instruction::End);
+                        self.loops.exit_frame();
                         return;
                     }
                     ast::BinOpKind::Or => {
                         self.expr(ins, left);
                         ins.push(ir::Instruction::If(ir::BlockType::Result(ir::ValType::I32)));
+                        self.loops.enter_frame();
                         ins.push(ir::Instruction::I32Const(1));
                         ins.push(ir::Instruction::Else);
                         self.expr(ins, right);
                         ins.push(ir::Instruction::End);
+                        self.loops.exit_frame();
                         return;
                     }
                     _ => {}
@@ -298,18 +378,26 @@ impl Compiler {
                     ir::BlockType::Result(ty.lower())
                 };
                 ins.push(ir::Instruction::If(block_type));
+                self.loops.enter_frame();
                 self.branch(ins, then_branch);
                 if let Some(else_branch) = else_branch {
                     ins.push(ir::Instruction::Else);
                     self.branch(ins, else_branch);
                 }
                 ins.push(ir::Instruction::End);
+                self.loops.exit_frame();
+            }
+            ast::ExprKind::Break => {
+                ins.push(ir::Instruction::Br(self.loops.break_label()));
+            }
+            ast::ExprKind::Continue => {
+                ins.push(ir::Instruction::Br(self.loops.continue_label()));
             }
         }
     }
 
     // TODO: very similar to `block`, duplication
-    fn branch(&self, ins: &mut Vec<ir::Instruction>, block: &ast::Block) {
+    fn branch(&mut self, ins: &mut Vec<ir::Instruction>, block: &ast::Block) {
         match &block.kind {
             ast::BlockKind::Braces { statements } => {
                 if let Some((last, rest)) = statements.split_last() {
@@ -423,8 +511,7 @@ impl Type {
 pub fn compile(module: &ast::Module, semantics: Semantics) -> ir::Module {
     let mut compiler = Compiler {
         semantics,
-        local_addresses: Default::default(),
-        func_addresses: Default::default(),
+        ..Default::default()
     };
     compiler.calculate_addresses();
     compiler.module(module)

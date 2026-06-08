@@ -335,6 +335,24 @@ Unlike `if`, `while` is **not** an expression: it never produces a value, so it 
 let a Unit = while a > 0: print_int(a)   // error: `while` is a statement, not an expression
 ```
 
+### `break` and `continue`
+
+Inside a loop, `break` stops the loop immediately, and `continue` skips the rest of the current iteration and re-tests the condition:
+
+```luffy
+let i Int = 0
+while i < 10 {
+    i = i + 1
+    if i == 3: continue   // skip printing 3
+    if i > 6: break       // stop once past 6
+    print_int(i)
+}
+```
+
+Both are *expressions* of type `Unit`, so they can appear anywhere an expression can — including a colon branch as above. Because they yield `Unit`, they cannot stand in for a real value (for example, as both arms of a value-producing `if`). Using `break` or `continue` outside a loop is a compile error.
+
+Note the usual `continue` caveat: make sure the loop still makes progress before the `continue`, or it will spin forever. Above, `i` is incremented before any `continue`.
+
 ---
 
 ## Imports and Exports
