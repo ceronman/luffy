@@ -310,6 +310,33 @@ This mirrors how `if` works in Kotlin.
 
 ---
 
+## Loops
+
+`while` repeats a block as long as its condition is `true`. As with `if`, the condition is *not* parenthesized:
+
+```luffy
+while a > 0 {
+    print_int(a)
+    a = a - 1
+}
+```
+
+The body follows the same two forms as a function body or an `if` branch. The braces form holds any number of statements; the colon form holds a single expression:
+
+```luffy
+while a > 0: print_int(a)
+```
+
+Note that the colon form's body is a single *expression*. Since assignment is a statement, not an expression, the common pattern of mutating a counter (`a = a - 1`) needs the braces form — the colon form is best reserved for side-effecting calls.
+
+Unlike `if`, `while` is **not** an expression: it never produces a value, so it cannot be used where a value is expected. This is illegal:
+
+```luffy
+let a Unit = while a > 0: print_int(a)   // error: `while` is a statement, not an expression
+```
+
+---
+
 ## Imports and Exports
 
 Luffy modules live inside a WebAssembly module. Functions from the host environment are brought in with `import fn` and made available to the rest of the module. No body is needed — the host provides the implementation.

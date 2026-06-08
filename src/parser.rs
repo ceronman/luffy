@@ -172,9 +172,23 @@ impl<'src> Parser<'src> {
         match self.current.kind {
             TokenKind::LBrace => self.block(),
             TokenKind::Let => self.declaration(),
+            TokenKind::While => self.while_statement(),
             TokenKind::Return => self.return_statement(),
             _ => self.expr_stmt(),
         }
+    }
+
+    fn while_statement(&mut self) -> Result<Stmt> {
+        let while_kw = self.expect(TokenKind::While)?;
+        let condition = self.expression()?;
+        let body = self.block_body("`while` body")?;
+        Ok(Stmt {
+            node: self.node(while_kw.span, body.node.span),
+            kind: StmtKind::While {
+                condition,
+                body: body.into(),
+            },
+        })
     }
 
     fn expression_precedence(&mut self, min_precedence: u8) -> Result<Expr> {

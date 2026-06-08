@@ -1699,3 +1699,162 @@ fn error_if_branch_missing_block_or_colon() {
                                       ^ ─── Expected `{` or `:` for `if` branch, found `<Int> instead
     ");
 }
+
+// ── `while` statement tests ───────────────────────────────────────────────────
+
+#[test]
+fn while_statement_braces() {
+    assert_snapshot!(parse_stmt("while a > 0 { print_int(1) }"), @"
+    While
+    ├── Condition
+    │   └── Binary [>]
+    │       ├── Var [a]
+    │       └── Int[0]
+    └── Body
+        └── Block
+            └── Call
+                ├── Var [print_int]
+                └── Args
+                    └── Int[1]
+    ");
+}
+
+#[test]
+fn while_statement_colon() {
+    assert_snapshot!(parse_stmt("while a > 0: print_int(1)"), @"
+    While
+    ├── Condition
+    │   └── Binary [>]
+    │       ├── Var [a]
+    │       └── Int[0]
+    └── Body
+        └── ExprBlock
+            └── Call
+                ├── Var [print_int]
+                └── Args
+                    └── Int[1]
+    ");
+}
+
+#[test]
+fn while_body_with_multiple_statements() {
+    let src = r#"while a > 0 {
+        print_int(a)
+        a = a - 1
+    }"#;
+    assert_snapshot!(parse_stmt(src), @"
+    While
+    ├── Condition
+    │   └── Binary [>]
+    │       ├── Var [a]
+    │       └── Int[0]
+    └── Body
+        └── Block
+            ├── Call
+            │   ├── Var [print_int]
+            │   └── Args
+            │       └── Var [a]
+            └── Assign
+                ├── Var [a]
+                └── Binary [-]
+                    ├── Var [a]
+                    └── Int[1]
+    ");
+}
+
+#[test]
+fn while_braces_spanning_lines() {
+    let src = r#"
+        fn f(a Int) {
+            while a > 0 {
+                print_int(a)
+                a = a - 1
+            }
+        }
+    "#;
+    assert_snapshot!(parse_module(src), @"
+    Module
+    └── Function [f]
+        ├── Export [false]
+        ├── Parameters
+        │   └── Param
+        │       ├── Name
+        │       │   └── a
+        │       └── Type
+        │           └── Int
+        ├── Return
+        │   └── Unit
+        └── Body
+            └── Block
+                └── While
+                    ├── Condition
+                    │   └── Binary [>]
+                    │       ├── Var [a]
+                    │       └── Int[0]
+                    └── Body
+                        └── Block
+                            ├── Call
+                            │   ├── Var [print_int]
+                            │   └── Args
+                            │       └── Var [a]
+                            └── Assign
+                                ├── Var [a]
+                                └── Binary [-]
+                                    ├── Var [a]
+                                    └── Int[1]
+    ");
+}
+
+#[test]
+fn while_single_line_with_semicolons() {
+    let src = "fn f(a Int) { while a > 0 { print_int(a); a = a - 1 } }";
+    assert_snapshot!(parse_module(src), @"
+    Module
+    └── Function [f]
+        ├── Export [false]
+        ├── Parameters
+        │   └── Param
+        │       ├── Name
+        │       │   └── a
+        │       └── Type
+        │           └── Int
+        ├── Return
+        │   └── Unit
+        └── Body
+            └── Block
+                └── While
+                    ├── Condition
+                    │   └── Binary [>]
+                    │       ├── Var [a]
+                    │       └── Int[0]
+                    └── Body
+                        └── Block
+                            ├── Call
+                            │   ├── Var [print_int]
+                            │   └── Args
+                            │       └── Var [a]
+                            └── Assign
+                                ├── Var [a]
+                                └── Binary [-]
+                                    ├── Var [a]
+                                    └── Int[1]
+    ");
+}
+
+#[test]
+fn error_while_used_as_expression() {
+    // `while` is a statement only — it never appears in expression position, so
+    // using it as an initializer is a parse error.
+    assert_snapshot!(parse_module("fn f() { let a Int = while true { 1 } }"), @"
+    fn f() { let a Int = while true { 1 } }
+                         ^^^^^ ─── Unexpected `while`
+    ");
+}
+
+#[test]
+fn error_while_body_missing_block_or_colon() {
+    assert_snapshot!(parse_module("fn f() { while true print_int(1) }"), @"
+    fn f() { while true print_int(1) }
+                        ^^^^^^^^^ ─── Expected `{` or `:` for `while` body, found <Identifier> instead
+    ");
+}

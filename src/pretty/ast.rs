@@ -116,6 +116,13 @@ impl PrettyAst {
                 let value = Self::expression(value);
                 Self::new("Assign", vec![target, value])
             }
+            StmtKind::While { condition, body } => Self::new(
+                "While",
+                vec![
+                    Self::new("Condition", vec![Self::expression(condition)]),
+                    Self::new("Body", vec![Self::block(body)]),
+                ],
+            ),
         }
     }
     fn expression(expression: &Expr) -> PrettyAst {

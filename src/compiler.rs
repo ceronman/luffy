@@ -156,8 +156,46 @@ impl Compiler {
                 self.expr(ins, value);
                 ins.push(ir::Instruction::LocalSet(adddress));
             }
+            ast::StmtKind::While { condition, body } => {
+                // Standard Wasm while loop:
+                //
+                //   block                ;; break target (label 1 from inside loop)
+                //     loop               ;; continue target (label 0)
+                //       <condition>
+                //       i32.eqz
+                //       br_if 1          ;; condition false -> exit the loop
+                //       <body>
+                //       br 0             ;; jump back to re-test the condition
+                //     end
+                //   end
+                ins.push(ir::Instruction::Block(ir::BlockType::Empty));
+                ins.push(ir::Instruction::Loop(ir::BlockType::Empty));
+                self.expr(ins, condition);
+                ins.push(ir::Instruction::I32Eqz);
+                ins.push(ir::Instruction::BrIf(1));
+                self.loop_body(ins, body);
+                ins.push(ir::Instruction::Br(0));
+                ins.push(ir::Instruction::End);
+                ins.push(ir::Instruction::End);
+            }
             ast::StmtKind::Return { expr } => {
                 self.expr(ins, expr);
+            }
+        }
+    }
+
+    fn loop_body(&self, ins: &mut Vec<ir::Instruction>, block: &ast::Block) {
+        match &block.kind {
+            ast::BlockKind::Braces { statements } => {
+                for stmt in statements {
+                    self.stmt(ins, stmt);
+                }
+            }
+            ast::BlockKind::Expr { expr } => {
+                self.expr(ins, expr);
+                if !self.node_type(expr.node).is_unit() {
+                    ins.push(ir::Instruction::Drop);
+                }
             }
         }
     }

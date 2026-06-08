@@ -2,6 +2,7 @@ pub type Idx = u32;
 pub type TypeIdx = Idx;
 pub type LocalIdx = Idx;
 pub type FuncIdx = Idx;
+pub type LabelIdx = Idx;
 
 pub struct Module {
     pub types: Vec<Type>,
@@ -42,6 +43,10 @@ pub enum Instruction {
     I32Eqz,
     If(BlockType),
     Else,
+    Block(BlockType),
+    Loop(BlockType),
+    Br(LabelIdx),
+    BrIf(LabelIdx),
 
     I64Const(i64),
     I64Add,

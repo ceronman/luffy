@@ -638,3 +638,83 @@ fn if_statement_without_else_has_no_result() {
     )
     "#);
 }
+
+// ── `while` statement compilation ─────────────────────────────────────────────
+
+#[test]
+fn while_compiles_to_block_loop_br_if() {
+    let src = r#"
+        import fn print_int(x Int)
+        export fn main() {
+            let a Int = 3
+            while a > 0 {
+                print_int(a)
+                a = a - 1
+            }
+        }
+    "#;
+    assert_snapshot!(compile_to_wat(src), @r#"
+    (module
+      (type (;0;) (func (param i64)))
+      (type (;1;) (func))
+      (import "js" "print_int" (func (;0;) (type 0)))
+      (export "main" (func 1))
+      (func (;1;) (type 1)
+        (local i64)
+        i64.const 3
+        local.set 0
+        block ;; label = @1
+          loop ;; label = @2
+            local.get 0
+            i64.const 0
+            i64.gt_s
+            i32.eqz
+            br_if 1 (;@1;)
+            local.get 0
+            call 0
+            local.get 0
+            i64.const 1
+            i64.sub
+            local.set 0
+            br 0 (;@2;)
+          end
+        end
+      )
+    )
+    "#);
+}
+
+#[test]
+fn while_colon_body_drops_value() {
+    // The colon body is a single expression; its value must be dropped so the
+    // loop's operand stack stays balanced.
+    let src = r#"
+        export fn main() {
+            let a Int = 0
+            while a > 0: a
+        }
+    "#;
+    assert_snapshot!(compile_to_wat(src), @r#"
+    (module
+      (type (;0;) (func))
+      (export "main" (func 0))
+      (func (;0;) (type 0)
+        (local i64)
+        i64.const 0
+        local.set 0
+        block ;; label = @1
+          loop ;; label = @2
+            local.get 0
+            i64.const 0
+            i64.gt_s
+            i32.eqz
+            br_if 1 (;@1;)
+            local.get 0
+            drop
+            br 0 (;@2;)
+          end
+        end
+      )
+    )
+    "#);
+}

@@ -98,6 +98,10 @@ pub enum StmtKind {
         target: Expr,
         value: Expr,
     },
+    While {
+        condition: Expr,
+        body: Box<Block>,
+    },
     Return {
         expr: Expr,
     },

@@ -115,12 +115,13 @@ enum StmtKind {
     Block       { statements: Vec<Stmt> },
     Declaration { name, ty: TypeRef, initializer: Expr },   // let x T = expr
     Assignment  { target: Expr, value: Expr },              // x = expr
+    While       { condition: Expr, body: Box<Block> },      // while cond { ... } / while cond: expr
     Return      { expr: Expr },
     ExprStmt    { expr: Expr },
 }
 ```
 
-**`if` is implemented** as an `ExprKind` variant (see Expressions below), not a `StmtKind`. **`while` is not yet implemented** — its token exists in the lexer but the parser does not handle it.
+**`if` is implemented** as an `ExprKind` variant (see Expressions below), not a `StmtKind`. **`while` is implemented** as a `StmtKind` variant (see Loops below).
 
 ### Expressions
 
@@ -145,6 +146,29 @@ Call expressions only work with a `Variable` callee at the compiler stage (funct
 - **Expression position** (anywhere else — declaration initializer, `return`, call argument, operand, a branch's trailing expression, a colon function body): the `else` branch is **mandatory** and both branches must have the same type, which becomes the type of the `if`. Handled by the `ExprKind::If` arm in `Resolver::expr` / `Compiler::expr`; lowers to a Wasm `if` with `BlockType::Result(T)`, each branch leaving its value on the stack (`Compiler::branch`).
 
 This statement-vs-expression `else` rule matches Kotlin. The `Resolver` tracks the enclosing function in a `current_function` field so branch resolution can reach the function's return type and declare branch-local variables.
+
+### Loops (`while`)
+
+`while` is a `StmtKind::While { condition, body }`, parsed by `Parser::while_statement` and dispatched from `Parser::statement` on `TokenKind::While`. The condition is parenthesis-free (like `if`) and the body reuses `Parser::block_body` (the same braces/colon forms as a function body or `if` branch).
+
+`while` is a **statement only** — it is never wired into `expression_precedence`, so using it in expression position (e.g. `let a Int = while ...`) is a parse error ("Unexpected `while`"). It always has type `Unit`.
+
+- **Semantic** (`Resolver::stmt`, `StmtKind::While` arm): checks the condition is `Bool` via the shared `check_condition(.., keyword)` helper (now parameterized so the error names `if` vs `while`), then type-checks the body with `block_type` (which opens/closes a scope) and discards its type.
+- **Compiler** (`Compiler::stmt`, `StmtKind::While` arm): lowers to the standard Wasm `block` / `loop` / `br_if` / `br` shape:
+
+  ```wat
+  block            ;; break target
+    loop           ;; continue target
+      <condition>
+      i32.eqz
+      br_if 1      ;; condition false -> exit
+      <body>
+      br 0         ;; re-test condition
+    end
+  end
+  ```
+
+  The body is lowered by `Compiler::loop_body`, which keeps the operand stack balanced: a braces body runs each statement through `stmt` (expression statements already drop their non-`Unit` values), and a colon body evaluates its single expression and drops the value if non-`Unit`. The new IR instructions `Block`, `Loop`, `Br(LabelIdx)`, and `BrIf(LabelIdx)` are encoded in `emit.rs`.
 
 ### Types
 

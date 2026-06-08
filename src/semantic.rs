@@ -209,7 +209,7 @@ impl Resolver {
                 } = &expr.kind
                 {
                     // TODO: Figure out how to avoid this duplication
-                    self.check_condition(condition, func_id)?;
+                    self.check_condition(condition, func_id, "if")?;
                     self.block_type(then_branch, func_id)?;
                     if let Some(else_branch) = else_branch {
                         self.block_type(else_branch, func_id)?;
@@ -247,6 +247,11 @@ impl Resolver {
                 let target_ty = self.lookup_ty(name)?;
                 let expr_ty = self.expr(value, func_id)?;
                 check_ty_match(value.node.span, &target_ty, &expr_ty)?;
+                Type::Unit
+            }
+            StmtKind::While { condition, body } => {
+                self.check_condition(condition, func_id, "while")?;
+                self.block_type(body, func_id)?;
                 Type::Unit
             }
             StmtKind::Return { expr } => {
@@ -363,7 +368,7 @@ impl Resolver {
                 then_branch,
                 else_branch,
             } => {
-                self.check_condition(condition, func_id)?;
+                self.check_condition(condition, func_id, "if")?;
                 let Some(else_branch) = else_branch else {
                     return type_err(
                         expr.node.span,
@@ -380,12 +385,17 @@ impl Resolver {
         Ok(ty)
     }
 
-    fn check_condition(&mut self, condition: &Expr, func_id: DeclarationId) -> Result<()> {
+    fn check_condition(
+        &mut self,
+        condition: &Expr,
+        func_id: DeclarationId,
+        keyword: &str,
+    ) -> Result<()> {
         let cond_ty = self.expr(condition, func_id)?;
         if !cond_ty.is_bool() {
             return type_err(
                 condition.node.span,
-                format!("Condition of 'if' must be 'Bool', found '{cond_ty}'"),
+                format!("Condition of '{keyword}' must be 'Bool', found '{cond_ty}'"),
             );
         }
         Ok(())

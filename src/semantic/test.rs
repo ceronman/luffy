@@ -558,3 +558,33 @@ fn error_if_condition_not_bool() {
                                 ^ ─── Condition of 'if' must be 'Bool', found 'Int'
     ");
 }
+
+// ── `while` statement tests ───────────────────────────────────────────────────
+
+#[test]
+fn valid_while_braces() {
+    assert_snapshot!(check("fn f(a Int) { while a > 0 { a = a - 1 } }"), @"<no error>");
+}
+
+#[test]
+fn valid_while_colon() {
+    let src = r#"
+        import fn print_int(x Int)
+        fn f(a Int) { while a > 0: print_int(a) }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn valid_while_body_scopes_locals() {
+    // A local declared in the loop body is scoped to the body.
+    assert_snapshot!(check("fn f(a Int) { while a > 0 { let b Int = a; a = a - b } }"), @"<no error>");
+}
+
+#[test]
+fn error_while_condition_not_bool() {
+    assert_snapshot!(check("fn f(a Int) { while a { a = a - 1 } }"), @"
+    fn f(a Int) { while a { a = a - 1 } }
+                        ^ ─── Condition of 'while' must be 'Bool', found 'Int'
+    ");
+}

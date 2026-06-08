@@ -416,3 +416,52 @@ fn if_branch_last_expression_is_the_value() {
     10
     ");
 }
+
+// ── `while` statement execution ───────────────────────────────────────────────
+
+#[test]
+fn while_loop_counts_down() {
+    let body = r#"
+        let a Int = 3
+        while a > 0 {
+            print_int(a)
+            a = a - 1
+        }
+        print_int(0)
+    "#;
+    assert_snapshot!(run_main(body), @"
+    3
+    2
+    1
+    0
+    ");
+}
+
+#[test]
+fn while_loop_body_never_runs_when_condition_false() {
+    let body = r#"
+        let a Int = 0
+        while a > 0 {
+            print_int(a)
+            a = a - 1
+        }
+        print_int(99)
+    "#;
+    assert_snapshot!(run_main(body), @"99");
+}
+
+#[test]
+fn while_loop_with_inner_local() {
+    // A fresh local declared each iteration; sums 1+2+3 into `total`.
+    let body = r#"
+        let i Int = 1
+        let total Int = 0
+        while i <= 3 {
+            let step Int = i
+            total = total + step
+            i = i + 1
+        }
+        print_int(total)
+    "#;
+    assert_snapshot!(run_main(body), @"6");
+}
