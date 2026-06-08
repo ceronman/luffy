@@ -367,42 +367,6 @@ fn return_expression() {
     ");
 }
 
-#[test]
-fn block_empty() {
-    assert_snapshot!(parse_stmt("{}"), @"Block");
-}
-
-#[test]
-fn block_single_statement() {
-    assert_snapshot!(parse_stmt("{ return 1 }"), @r"
-    Block
-    └── Return
-        └── Int[1]
-    ");
-}
-
-#[test]
-fn block_multiple_statements() {
-    let src = r#"{
-        let x Int = 1
-        let y Int = 2
-        return x
-    }"#;
-    assert_snapshot!(parse_stmt(src), @r"
-    Block
-    ├── VarDeclaration [x]
-    │   ├── Type
-    │   │   └── Int
-    │   └── Int[1]
-    ├── VarDeclaration [y]
-    │   ├── Type
-    │   │   └── Int
-    │   └── Int[2]
-    └── Return
-        └── Var [x]
-    ");
-}
-
 // ── Function-declaration tests ────────────────────────────────────────────────
 
 #[test]

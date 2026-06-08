@@ -220,14 +220,6 @@ impl Resolver {
                     self.expr(expr, func_id)?
                 }
             }
-            StmtKind::Block { statements } => {
-                // TODO: This is very similar to `self.block_type` Maybe remove this alltogether?
-                let mut ty = Type::Unit;
-                for stmt in statements {
-                    ty = self.stmt(stmt, func_id)?;
-                }
-                ty
-            }
             StmtKind::Declaration {
                 name,
                 ty,

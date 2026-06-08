@@ -170,7 +170,6 @@ impl<'src> Parser<'src> {
 
     fn statement(&mut self) -> Result<Stmt> {
         match self.current.kind {
-            TokenKind::LBrace => self.block(),
             TokenKind::Let => self.declaration(),
             TokenKind::While => self.while_statement(),
             TokenKind::Return => self.return_statement(),
@@ -513,16 +512,6 @@ impl<'src> Parser<'src> {
                 then_branch: then_branch.into(),
                 else_branch,
             },
-        })
-    }
-
-    fn block(&mut self) -> Result<Stmt> {
-        let lbrace = self.expect(TokenKind::LBrace)?;
-        let statements = self.statements()?;
-        let rbrace = self.expect(TokenKind::RBrace)?;
-        Ok(Stmt {
-            node: self.node(lbrace.span, rbrace.span),
-            kind: StmtKind::Block { statements },
         })
     }
 

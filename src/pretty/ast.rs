@@ -99,7 +99,6 @@ impl PrettyAst {
         match &statement.kind {
             StmtKind::Return { expr } => Self::new("Return", vec![Self::expression(expr)]),
             StmtKind::ExprStmt { expr } => Self::expression(expr),
-            StmtKind::Block { statements } => Self::new("Block", statements.iter().map(Self::stmt)),
             StmtKind::Declaration {
                 name,
                 ty,

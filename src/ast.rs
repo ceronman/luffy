@@ -86,9 +86,6 @@ pub enum StmtKind {
     ExprStmt {
         expr: Expr,
     },
-    Block {
-        statements: Vec<Stmt>,
-    },
     Declaration {
         name: Identifier,
         ty: TypeRef,

@@ -134,11 +134,6 @@ impl Compiler {
                     ins.push(ir::Instruction::Drop);
                 }
             }
-            ast::StmtKind::Block { statements } => {
-                for stmt in statements {
-                    self.stmt(ins, stmt);
-                }
-            }
             ast::StmtKind::Declaration {
                 name,
                 initializer: value,
