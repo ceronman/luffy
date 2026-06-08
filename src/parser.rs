@@ -180,7 +180,7 @@ impl<'src> Parser<'src> {
     fn while_statement(&mut self) -> Result<Stmt> {
         let while_kw = self.expect(TokenKind::While)?;
         let condition = self.expression()?;
-        let body = self.block_body("`while` body")?;
+        let body = self.block("`while` body")?;
         Ok(Stmt {
             node: self.node(while_kw.span, body.node.span),
             kind: StmtKind::While {
@@ -452,14 +452,10 @@ impl<'src> Parser<'src> {
     }
 
     fn function_body(&mut self) -> Result<Block> {
-        self.block_body("function body")
+        self.block("function body")
     }
 
-    /// Parses a block in either form: a braces block (`{ ... }`) or a short
-    /// colon block (`: expr`). Used for both function bodies and `if` branches.
-    /// `context` names the construct for the error message shown when neither
-    /// form is found (e.g. "function body", "`if` branch").
-    fn block_body(&mut self, context: &str) -> Result<Block> {
+    fn block(&mut self, context: &str) -> Result<Block> {
         match self.current.kind {
             TokenKind::LBrace => self.braces_block(),
             TokenKind::Colon => self.expr_block(),
@@ -475,7 +471,15 @@ impl<'src> Parser<'src> {
 
     fn braces_block(&mut self) -> Result<Block> {
         let lbrace = self.expect(TokenKind::LBrace)?;
-        let statements = self.statements()?;
+        let mut statements = Vec::new();
+        loop {
+            self.skip_semicolons();
+            if matches!(self.current.kind, TokenKind::RBrace | TokenKind::Eof) {
+                break;
+            }
+            statements.push(self.statement()?);
+            self.stmt_separator()?;
+        }
         let rbrace = self.expect(TokenKind::RBrace)?;
         Ok(Block {
             node: self.node(lbrace.span, rbrace.span),
@@ -496,10 +500,10 @@ impl<'src> Parser<'src> {
     fn if_expr(&mut self) -> Result<Expr> {
         let if_kw = self.expect(TokenKind::If)?;
         let condition = self.expression()?;
-        let then_branch = self.block_body("`if` branch")?;
+        let then_branch = self.block("`if` branch")?;
         let mut end = then_branch.node.span;
         let else_branch = if self.eat(TokenKind::Else) {
-            let block = self.block_body("`if` branch")?;
+            let block = self.block("`if` branch")?;
             end = block.node.span;
             Some(block.into())
         } else {
@@ -515,20 +519,6 @@ impl<'src> Parser<'src> {
         })
     }
 
-    /// Parses a `}`-terminated list of statements.
-    fn statements(&mut self) -> Result<Vec<Stmt>> {
-        let mut statements = Vec::new();
-        loop {
-            self.skip_semicolons();
-            if matches!(self.current.kind, TokenKind::RBrace | TokenKind::Eof) {
-                break;
-            }
-            statements.push(self.statement()?);
-            self.expect_statement_separator()?;
-        }
-        Ok(statements)
-    }
-
     fn return_statement(&mut self) -> Result<Stmt> {
         let return_kw = self.expect(TokenKind::Return)?;
         let expr = self.expression()?;
@@ -542,10 +532,7 @@ impl<'src> Parser<'src> {
         while self.eat(TokenKind::Semicolon) {}
     }
 
-    /// Requires a separator after a statement: a newline (recorded as
-    /// `newline_before` on the current token), a `;`, or the end of the
-    /// enclosing block (`}` / end of file).
-    fn expect_statement_separator(&mut self) -> Result<()> {
+    fn stmt_separator(&mut self) -> Result<()> {
         if !self.current.newline_before
             && !matches!(
                 self.current.kind,
