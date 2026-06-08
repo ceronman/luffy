@@ -547,7 +547,7 @@ fn error_if_expression_without_else() {
 fn error_if_branch_type_mismatch() {
     assert_snapshot!(check("fn f(a Int) Int { return if a > 0 { 1 } else { 2.5 } }"), @"
     fn f(a Int) Int { return if a > 0 { 1 } else { 2.5 } }
-                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^ ─── Type mismatch: expected 'Int', found 'Float'
+                                                 ^^^^^^^ ─── Type mismatch: expected 'Int', found 'Float'
     ");
 }
 

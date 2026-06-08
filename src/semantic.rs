@@ -2,8 +2,8 @@
 mod test;
 
 use crate::ast::{
-    BinOpKind, Block, BlockKind, Expr, ExprKind, Identifier, ItemKind, LiteralKind, Module, NodeId,
-    Param, Stmt, StmtKind, Symbol, TypeKind, TypeRef, UnOpKind,
+    BinOpKind, Block, BlockKind, Expr, ExprKind, Identifier, ItemKind, LiteralKind, Module, Node,
+    NodeId, Param, Stmt, StmtKind, Symbol, TypeKind, TypeRef, UnOpKind,
 };
 use crate::error::{CompilerError, ErrorKind};
 use crate::lexer::Span;
@@ -174,10 +174,8 @@ impl Resolver {
                 for stmt in statements {
                     self.stmt(stmt, func_id)?;
                 }
-                let function_decl = &self.semantics.declarations[func_id];
-                let Type::Function { ret, .. } = &function_decl.ty else {
-                    return resolve_err(block.node.span, "Return outside of function");
-                };
+                // TODO: Improve this logic to catch other control flow statements
+                let ret = self.function_ret_ty(block.node, func_id)?;
                 let ends_with_return = matches!(
                     statements.last().map(|s| &s.kind),
                     Some(StmtKind::Return { .. })
@@ -189,11 +187,8 @@ impl Resolver {
             }
             BlockKind::Expr { expr } => {
                 let ty = self.expr(expr, func_id)?;
-                let function_decl = &self.semantics.declarations[func_id];
-                let Type::Function { ret, .. } = &function_decl.ty else {
-                    return resolve_err(expr.node.span, "Return outside of function");
-                };
-                check_ty_match(expr.node.span, ret, &ty)?;
+                let ret = self.function_ret_ty(block.node, func_id)?;
+                check_ty_match(expr.node.span, &ret, &ty)?;
             }
         }
         Ok(())
@@ -208,14 +203,16 @@ impl Resolver {
                     else_branch,
                 } = &expr.kind
                 {
-                    // TODO: Figure out how to avoid this duplication
-                    self.check_condition(condition, func_id, "if")?;
-                    self.block_type(then_branch, func_id)?;
-                    if let Some(else_branch) = else_branch {
-                        self.block_type(else_branch, func_id)?;
-                    }
-                    self.semantics.expr_types.insert(expr.node.id, Type::Unit);
-                    Type::Unit
+                    let ty = self.if_expr(
+                        expr.node,
+                        condition,
+                        then_branch,
+                        else_branch.as_deref(),
+                        false,
+                        func_id,
+                    )?;
+                    self.semantics.expr_types.insert(expr.node.id, ty.clone());
+                    ty
                 } else {
                     self.expr(expr, func_id)?
                 }
@@ -359,21 +356,43 @@ impl Resolver {
                 condition,
                 then_branch,
                 else_branch,
-            } => {
-                self.check_condition(condition, func_id, "if")?;
-                let Some(else_branch) = else_branch else {
-                    return type_err(
-                        expr.node.span,
-                        "'if' must have both main and 'else' branches when used as an expression.",
-                    );
-                };
-                let then_ty = self.block_type(then_branch, func_id)?;
-                let else_ty = self.block_type(else_branch, func_id)?;
-                check_ty_match(expr.node.span, &then_ty, &else_ty)?;
-                then_ty
-            }
+            } => self.if_expr(
+                expr.node,
+                condition,
+                then_branch,
+                else_branch.as_deref(),
+                true,
+                func_id,
+            )?,
         };
         self.semantics.expr_types.insert(expr.node.id, ty.clone());
+        Ok(ty)
+    }
+
+    fn if_expr(
+        &mut self,
+        node: Node,
+        condition: &Expr,
+        then_branch: &Block,
+        else_branch: Option<&Block>,
+        mandatory_else: bool,
+        func_id: DeclarationId,
+    ) -> Result<Type> {
+        self.check_condition(condition, func_id, "if")?;
+        let then_ty = self.block_type(then_branch, func_id)?;
+        let ty = if let Some(else_branch) = else_branch {
+            let else_ty = self.block_type(else_branch, func_id)?;
+            // TODO: node shoud be tail of block for clarity
+            check_ty_match(else_branch.node.span, &then_ty, &else_ty)?;
+            then_ty
+        } else if mandatory_else {
+            return type_err(
+                node.span,
+                "'if' must have both main and 'else' branches when used as an expression.",
+            );
+        } else {
+            Type::Unit
+        };
         Ok(ty)
     }
 
@@ -476,6 +495,16 @@ impl Resolver {
             return resolve_err(ident.node.span, format!("Undeclared '{}'", ident.symbol));
         };
         Ok(decl.ty.clone())
+    }
+
+    fn function_ret_ty(&self, node: Node, func_id: DeclarationId) -> Result<Type> {
+        let Some(function_decl) = &self.semantics.declarations.get(func_id) else {
+            return resolve_err(node.span, "Enclosing function not found");
+        };
+        let Type::Function { ret, .. } = function_decl.ty.clone() else {
+            return resolve_err(node.span, "Enclosing function not found");
+        };
+        Ok(Rc::unwrap_or_clone(ret))
     }
 }
 

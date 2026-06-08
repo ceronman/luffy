@@ -46,7 +46,7 @@ pub enum ItemKind {
 #[derive(Debug)]
 pub struct TypeRef {
     pub node: Node,
-    pub kind: TypeKind,
+    pub kind: TypeKind, // TODO: Use name instead and resolve on semantic analysis
 }
 
 #[derive(Debug)]

@@ -497,6 +497,7 @@ impl<'src> Parser<'src> {
         })
     }
 
+    // TODO: Allow chaining of if expressions if foo: 1 else if bar: 2 else 3
     fn if_expr(&mut self) -> Result<Expr> {
         let if_kw = self.expect(TokenKind::If)?;
         let condition = self.expression()?;
