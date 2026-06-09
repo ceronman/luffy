@@ -1,7 +1,6 @@
-use crate::lexer::Span; // TODO: Maybe move to separate module
+use crate::source::{Span, Symbol};
 
 pub type NodeId = u32;
-pub type Symbol = String;
 
 #[derive(Copy, Clone, Debug)]
 pub struct Node {

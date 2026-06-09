@@ -7,7 +7,8 @@ use crate::ast::{
     Module, Node, Param, Stmt, StmtKind, TypeRef, UnOp, UnOpKind,
 };
 use crate::error::{CompilerError, ErrorKind};
-use crate::lexer::{Lexer, Span, Token, TokenKind};
+use crate::lexer::{Lexer, Token, TokenKind};
+use crate::source::Span;
 use std::fmt::Debug;
 
 struct Parser<'src> {

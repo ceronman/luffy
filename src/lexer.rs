@@ -1,6 +1,7 @@
 #[cfg(test)]
 mod test;
 
+use crate::source::Span;
 use std::fmt::Display;
 use std::str::Chars;
 
@@ -64,12 +65,6 @@ pub enum TokenKind {
 
     Eof,
     Error,
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub struct Span {
-    pub start: usize,
-    pub end: usize,
 }
 
 impl Span {

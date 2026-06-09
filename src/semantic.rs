@@ -3,10 +3,10 @@ mod test;
 
 use crate::ast::{
     BinOpKind, Block, BlockKind, Expr, ExprKind, Identifier, ItemKind, LiteralKind, Module, Node,
-    NodeId, Param, Stmt, StmtKind, Symbol, TypeRef, UnOpKind,
+    NodeId, Param, Stmt, StmtKind, TypeRef, UnOpKind,
 };
 use crate::error::{CompilerError, ErrorKind};
-use crate::lexer::Span;
+use crate::source::{Span, Symbol};
 use std::collections::{HashMap, VecDeque};
 use std::fmt::{Debug, Display, Formatter};
 use std::rc::Rc;

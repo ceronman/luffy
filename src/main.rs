@@ -7,6 +7,7 @@ pub mod lexer;
 pub mod parser;
 pub mod pretty;
 pub mod semantic;
+pub mod source;
 
 fn main() {
     let code = r#"

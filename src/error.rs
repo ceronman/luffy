@@ -1,4 +1,4 @@
-use crate::lexer::Span;
+use crate::source::Span;
 
 #[derive(Debug)]
 pub struct CompilerError {
