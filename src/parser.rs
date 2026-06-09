@@ -4,7 +4,7 @@ mod test;
 use crate::ast::StmtKind::{Assignment, ExprStmt};
 use crate::ast::{
     BinOp, BinOpKind, Block, BlockKind, Expr, ExprKind, Identifier, Item, ItemKind, LiteralKind,
-    Module, Node, Param, Stmt, StmtKind, TypeKind, TypeRef, UnOp, UnOpKind,
+    Module, Node, Param, Stmt, StmtKind, TypeRef, UnOp, UnOpKind,
 };
 use crate::error::{CompilerError, ErrorKind};
 use crate::lexer::{Lexer, Span, Token, TokenKind};
@@ -146,15 +146,9 @@ impl<'src> Parser<'src> {
 
     fn type_ref(&mut self) -> Result<TypeRef> {
         let name = self.identifier(|t| format!("Expected type, found {} instead", t.kind))?;
-        let kind = match name.symbol.as_str() {
-            "Int" => TypeKind::Int,
-            "Float" => TypeKind::Float,
-            "Bool" => TypeKind::Bool,
-            _ => return error(name.node.span, "Unknown type"),
-        };
         Ok(TypeRef {
             node: self.node(name.node.span, name.node.span),
-            kind,
+            name,
         })
     }
 

@@ -312,31 +312,44 @@ fn call_with_expression_arg() {
 
 #[test]
 fn declaration_int() {
-    assert_snapshot!(parse_stmt("let x Int = 42"), @r"
+    assert_snapshot!(parse_stmt("let x Int = 42"), @"
     VarDeclaration [x]
     ├── Type
-    │   └── Int
+    │   └── Type [Int]
     └── Int[42]
     ");
 }
 
 #[test]
 fn declaration_float() {
-    assert_snapshot!(parse_stmt("let pi Float = 3.14"), @r"
+    assert_snapshot!(parse_stmt("let pi Float = 3.14"), @"
     VarDeclaration [pi]
     ├── Type
-    │   └── Float
+    │   └── Type [Float]
     └── Float[3.14]
     ");
 }
 
 #[test]
 fn declaration_bool() {
-    assert_snapshot!(parse_stmt("let flag Bool = true"), @r"
+    assert_snapshot!(parse_stmt("let flag Bool = true"), @"
     VarDeclaration [flag]
     ├── Type
-    │   └── Bool
+    │   └── Type [Bool]
     └── Bool[true]
+    ");
+}
+
+#[test]
+fn declaration_with_unknown_type_name_parses() {
+    // The parser no longer validates type names — any identifier is accepted
+    // as a type and captured verbatim; resolution (and rejection) happens later
+    // during semantic analysis.
+    assert_snapshot!(parse_stmt("let x Foo = 1"), @"
+    VarDeclaration [x]
+    ├── Type
+    │   └── Type [Foo]
+    └── Int[1]
     ");
 }
 
@@ -397,7 +410,7 @@ fn function_with_return_type() {
         ├── Export [false]
         ├── Parameters
         ├── Return
-        │   └── Int
+        │   └── Type [Int]
         └── Body
             └── Block
                 └── Return
@@ -417,9 +430,9 @@ fn function_single_param() {
         │       ├── Name
         │       │   └── x
         │       └── Type
-        │           └── Int
+        │           └── Type [Int]
         ├── Return
-        │   └── Int
+        │   └── Type [Int]
         └── Body
             └── Block
                 └── Return
@@ -439,14 +452,14 @@ fn function_multiple_params() {
         │   │   ├── Name
         │   │   │   └── a
         │   │   └── Type
-        │   │       └── Int
+        │   │       └── Type [Int]
         │   └── Param
         │       ├── Name
         │       │   └── b
         │       └── Type
-        │           └── Int
+        │           └── Type [Int]
         ├── Return
-        │   └── Int
+        │   └── Type [Int]
         └── Body
             └── Block
                 └── Return
@@ -499,14 +512,14 @@ fn short_body_single_expression() {
         │   │   ├── Name
         │   │   │   └── a
         │   │   └── Type
-        │   │       └── Int
+        │   │       └── Type [Int]
         │   └── Param
         │       ├── Name
         │       │   └── b
         │       └── Type
-        │           └── Int
+        │           └── Type [Int]
         ├── Return
-        │   └── Int
+        │   └── Type [Int]
         └── Body
             └── ExprBlock
                 └── Binary [+]
@@ -524,7 +537,7 @@ fn short_body_literal() {
         ├── Export [false]
         ├── Parameters
         ├── Return
-        │   └── Int
+        │   └── Type [Int]
         └── Body
             └── ExprBlock
                 └── Int[42]
@@ -543,9 +556,9 @@ fn short_body_call_expression() {
         │       ├── Name
         │       │   └── x
         │       └── Type
-        │           └── Int
+        │           └── Type [Int]
         ├── Return
-        │   └── Int
+        │   └── Type [Int]
         └── Body
             └── ExprBlock
                 └── Call
@@ -567,14 +580,14 @@ fn short_body_exported() {
         │   │   ├── Name
         │   │   │   └── a
         │   │   └── Type
-        │   │       └── Int
+        │   │       └── Type [Int]
         │   └── Param
         │       ├── Name
         │       │   └── b
         │       └── Type
-        │           └── Int
+        │           └── Type [Int]
         ├── Return
-        │   └── Int
+        │   └── Type [Int]
         └── Body
             └── ExprBlock
                 └── Binary [+]
@@ -635,14 +648,14 @@ fn export_function() {
         │   │   ├── Name
         │   │   │   └── a
         │   │   └── Type
-        │   │       └── Int
+        │   │       └── Type [Int]
         │   └── Param
         │       ├── Name
         │       │   └── b
         │       └── Type
-        │           └── Int
+        │           └── Type [Int]
         ├── Return
-        │   └── Int
+        │   └── Type [Int]
         └── Body
             └── Block
                 └── Return
@@ -670,7 +683,7 @@ fn import_function_no_params_with_return_type() {
     └── Import [answer]
         ├── Parameters
         └── Return
-            └── Int
+            └── Type [Int]
     ");
 }
 
@@ -684,14 +697,14 @@ fn import_function_with_params_and_return_type() {
         │   │   ├── Name
         │   │   │   └── a
         │   │   └── Type
-        │   │       └── Int
+        │   │       └── Type [Int]
         │   └── Param
         │       ├── Name
         │       │   └── b
         │       └── Type
-        │           └── Int
+        │           └── Type [Int]
         └── Return
-            └── Int
+            └── Type [Int]
     ");
 }
 
@@ -709,7 +722,7 @@ fn module_with_import_and_export() {
     │   │       ├── Name
     │   │       │   └── n
     │   │       └── Type
-    │   │           └── Int
+    │   │           └── Type [Int]
     │   └── Return
     │       └── Unit
     └── Function [double]
@@ -719,9 +732,9 @@ fn module_with_import_and_export() {
         │       ├── Name
         │       │   └── x
         │       └── Type
-        │           └── Int
+        │           └── Type [Int]
         ├── Return
-        │   └── Int
+        │   └── Type [Int]
         └── Body
             └── Block
                 └── Return
@@ -746,22 +759,6 @@ fn error_missing_function_name() {
     assert_snapshot!(parse_module("fn () {}"), @"
     fn () {}
        ^ ─── Expected function name, found `(` instead
-    ");
-}
-
-#[test]
-fn error_unknown_type_in_param() {
-    assert_snapshot!(parse_module("fn f(x Unknown) {}"), @"
-    fn f(x Unknown) {}
-           ^^^^^^^ ─── Unknown type
-    ");
-}
-
-#[test]
-fn error_unknown_type_as_return_type() {
-    assert_snapshot!(parse_module("fn f() Unknown {}"), @"
-    fn f() Unknown {}
-           ^^^^^^^ ─── Unknown type
     ");
 }
 
@@ -954,11 +951,11 @@ fn statements_separated_by_newlines() {
             └── Block
                 ├── VarDeclaration [x]
                 │   ├── Type
-                │   │   └── Int
+                │   │   └── Type [Int]
                 │   └── Int[1]
                 ├── VarDeclaration [y]
                 │   ├── Type
-                │   │   └── Int
+                │   │   └── Type [Int]
                 │   └── Int[2]
                 └── Return
                     └── Var [x]
@@ -981,11 +978,11 @@ fn statements_separated_by_semicolons_on_one_line() {
             └── Block
                 ├── VarDeclaration [x]
                 │   ├── Type
-                │   │   └── Int
+                │   │   └── Type [Int]
                 │   └── Int[1]
                 ├── VarDeclaration [y]
                 │   ├── Type
-                │   │   └── Int
+                │   │   └── Type [Int]
                 │   └── Int[2]
                 └── Return
                     └── Var [x]
@@ -1011,11 +1008,11 @@ fn statements_mixing_newlines_and_semicolons() {
             └── Block
                 ├── VarDeclaration [x]
                 │   ├── Type
-                │   │   └── Int
+                │   │   └── Type [Int]
                 │   └── Int[1]
                 ├── VarDeclaration [y]
                 │   ├── Type
-                │   │   └── Int
+                │   │   └── Type [Int]
                 │   └── Int[2]
                 └── Return
                     └── Var [x]
@@ -1043,7 +1040,7 @@ fn trailing_and_repeated_semicolons_are_ignored() {
             └── Block
                 ├── VarDeclaration [x]
                 │   ├── Type
-                │   │   └── Int
+                │   │   └── Type [Int]
                 │   └── Int[1]
                 └── Return
                     └── Var [x]
@@ -1074,7 +1071,7 @@ fn blank_lines_between_statements_are_ignored() {
             └── Block
                 ├── VarDeclaration [x]
                 │   ├── Type
-                │   │   └── Int
+                │   │   └── Type [Int]
                 │   └── Int[1]
                 └── Return
                     └── Var [x]
@@ -1185,7 +1182,7 @@ fn blank_and_leading_lines_at_module_level_are_ignored() {
     │   │       ├── Name
     │   │       │   └── n
     │   │       └── Type
-    │   │           └── Int
+    │   │           └── Type [Int]
     │   └── Return
     │       └── Unit
     └── Function [a]
@@ -1225,14 +1222,14 @@ fn newlines_within_function_signature() {
         │   │   ├── Name
         │   │   │   └── a
         │   │   └── Type
-        │   │       └── Int
+        │   │       └── Type [Int]
         │   └── Param
         │       ├── Name
         │       │   └── b
         │       └── Type
-        │           └── Int
+        │           └── Type [Int]
         ├── Return
-        │   └── Int
+        │   └── Type [Int]
         └── Body
             └── Block
                 └── Return
@@ -1307,7 +1304,7 @@ fn colon_body_spanning_lines() {
         ├── Export [false]
         ├── Parameters
         ├── Return
-        │   └── Int
+        │   └── Type [Int]
         └── Body
             └── ExprBlock
                 └── Binary [+]
@@ -1596,9 +1593,9 @@ fn if_braces_spanning_lines() {
         │       ├── Name
         │       │   └── a
         │       └── Type
-        │           └── Int
+        │           └── Type [Int]
         ├── Return
-        │   └── Int
+        │   └── Type [Int]
         └── Body
             └── Block
                 └── If
@@ -1637,9 +1634,9 @@ fn if_else_keyword_on_new_line() {
         │       ├── Name
         │       │   └── a
         │       └── Type
-        │           └── Int
+        │           └── Type [Int]
         ├── Return
-        │   └── Int
+        │   └── Type [Int]
         └── Body
             └── Block
                 └── If
@@ -1745,7 +1742,7 @@ fn while_braces_spanning_lines() {
         │       ├── Name
         │       │   └── a
         │       └── Type
-        │           └── Int
+        │           └── Type [Int]
         ├── Return
         │   └── Unit
         └── Body
@@ -1781,7 +1778,7 @@ fn while_single_line_with_semicolons() {
         │       ├── Name
         │       │   └── a
         │       └── Type
-        │           └── Int
+        │           └── Type [Int]
         ├── Return
         │   └── Unit
         └── Body

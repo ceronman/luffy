@@ -32,6 +32,14 @@ Luffy has three primitive types:
 
 Types are always written with a capital letter. There are no implicit conversions between types — `Int` and `Float` are distinct.
 
+A type annotation is just a name. The compiler accepts any identifier where a type is expected and only checks it during type analysis, so an unrecognized type name is reported as a type error rather than a syntax error:
+
+```luffy
+let x Color = 1   // error: Unknown type
+```
+
+Besides the three primitives, two further types have names you can write but no literal values: `Unit` (the "no value" type of functions that return nothing) and `Never` (the type of expressions like `return` that never produce a value — see the section on `return` below).
+
 ---
 
 ## Variables

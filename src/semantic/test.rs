@@ -197,6 +197,48 @@ fn error_duplicate_function_name() {
 // ── Type errors: return statements ───────────────────────────────────────────
 
 #[test]
+fn error_unknown_type_in_param() {
+    assert_snapshot!(check("fn f(x Unknown) {}"), @"
+    fn f(x Unknown) {}
+           ^^^^^^^ ─── Unknown type
+    ");
+}
+
+#[test]
+fn error_unknown_type_as_return_type() {
+    assert_snapshot!(check("fn f() Unknown {}"), @"
+    fn f() Unknown {}
+           ^^^^^^^ ─── Unknown type
+    ");
+}
+
+#[test]
+fn error_unknown_type_in_declaration() {
+    // The third site that resolves a `TypeRef` (after params and return types):
+    // a `let` annotation.
+    assert_snapshot!(check("fn f() { let x Foo = 1 }"), @"
+    fn f() { let x Foo = 1 }
+                   ^^^ ─── Unknown type
+    ");
+}
+
+#[test]
+fn error_type_names_are_case_sensitive() {
+    // Type resolution is an exact string match, so `int` is not `Int`.
+    assert_snapshot!(check("fn f(x int) {}"), @"
+    fn f(x int) {}
+           ^^^ ─── Unknown type
+    ");
+}
+
+#[test]
+fn valid_explicit_unit_return_type() {
+    // `Unit` can now be written explicitly as a type name; it resolves the same
+    // as omitting the return type.
+    assert_snapshot!(check("fn f() Unit { }"), @"<no error>");
+}
+
+#[test]
 // TODO: Add special case error message for function that returns Unit
 fn error_return_int_from_unit_function() {
     assert_snapshot!(check("fn main() { return 0 }"), @r"

@@ -1,6 +1,6 @@
 use crate::ast::{
     BinOpKind, Block, BlockKind, Expr, ExprKind, Identifier, Item, ItemKind, LiteralKind, Module,
-    Stmt, StmtKind, TypeKind, TypeRef, UnOpKind,
+    Stmt, StmtKind, TypeRef, UnOpKind,
 };
 use std::fmt::Write;
 
@@ -173,11 +173,7 @@ impl PrettyAst {
     }
 
     fn ty(ty: &TypeRef) -> PrettyAst {
-        match ty.kind {
-            TypeKind::Int => Self::new("Int", vec![]),
-            TypeKind::Float => Self::new("Float", vec![]),
-            TypeKind::Bool => Self::new("Bool", vec![]),
-        }
+        Self::new(format!("Type [{}]", ty.name.symbol), vec![])
     }
 
     fn write(

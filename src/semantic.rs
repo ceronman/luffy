@@ -3,7 +3,7 @@ mod test;
 
 use crate::ast::{
     BinOpKind, Block, BlockKind, Expr, ExprKind, Identifier, ItemKind, LiteralKind, Module, Node,
-    NodeId, Param, Stmt, StmtKind, Symbol, TypeKind, TypeRef, UnOpKind,
+    NodeId, Param, Stmt, StmtKind, Symbol, TypeRef, UnOpKind,
 };
 use crate::error::{CompilerError, ErrorKind};
 use crate::lexer::Span;
@@ -129,8 +129,14 @@ impl Resolver {
                     params,
                     return_ty,
                 } => {
-                    let params: Vec<Type> = params.iter().map(|p| p.ty.lower()).collect();
-                    let ret = return_ty.as_ref().map(|t| t.lower()).unwrap_or(Type::Unit);
+                    let params: Vec<Type> = params
+                        .iter()
+                        .map(|p| self.ty_ref(&p.ty))
+                        .collect::<Result<_>>()?;
+                    let ret = return_ty
+                        .as_ref()
+                        .map(|t| self.ty_ref(t))
+                        .unwrap_or(Ok(Type::Unit))?;
                     let ty = Type::Function {
                         params: Rc::from(params),
                         ret: Rc::from(ret),
@@ -168,7 +174,8 @@ impl Resolver {
             ..
         } in params.iter()
         {
-            self.declare_local(param_name, ty.lower(), decl_id)?
+            let ty = self.ty_ref(ty)?;
+            self.declare_local(param_name, ty, decl_id)?
         }
         self.block(body, decl_id)?;
         self.end_scope();
@@ -227,7 +234,7 @@ impl Resolver {
                 ty,
                 initializer,
             } => {
-                let var_ty = ty.lower();
+                let var_ty = self.ty_ref(ty)?;
                 let init_ty = self.expr(initializer, func_id)?;
                 check_ty_match(initializer.node.span, &var_ty, &init_ty)?;
                 self.declare_local(name, var_ty, func_id)?;
@@ -524,14 +531,15 @@ impl Resolver {
         };
         Ok(Rc::unwrap_or_clone(ret))
     }
-}
 
-impl TypeRef {
-    fn lower(&self) -> Type {
-        match &self.kind {
-            TypeKind::Int => Type::Int,
-            TypeKind::Float => Type::Float,
-            TypeKind::Bool => Type::Bool,
+    fn ty_ref(&self, type_ref: &TypeRef) -> Result<Type> {
+        match type_ref.name.symbol.as_str() {
+            "Int" => Ok(Type::Int),
+            "Float" => Ok(Type::Float),
+            "Bool" => Ok(Type::Bool),
+            "Unit" => Ok(Type::Unit),
+            "Never" => Ok(Type::Never),
+            _ => resolve_err(type_ref.node.span, "Unknown type"),
         }
     }
 }

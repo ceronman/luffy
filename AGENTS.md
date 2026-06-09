@@ -192,11 +192,13 @@ This statement-vs-expression `else` rule matches Kotlin. The `Resolver` tracks t
 ### Types
 
 ```rust
-enum TypeKind { Int, Float, Bool }              // in AST (syntax)
+struct TypeRef { node: Node, name: Identifier }   // in AST (syntax) — an unresolved type name
 enum Type { Unit, Int, Float, Bool, Never, Function { params, ret } }  // in semantic (runtime)
 ```
 
-`Unit` is the type of functions with no return type annotation. It has no literal and cannot be stored in a variable. `Never` is the bottom type of diverging expressions (`return`/`break`/`continue`); it has no literal, no Wasm representation, and is compatible with every type (see "The `Never` type" above).
+**Type names are resolved during semantic analysis, not parsing.** A `TypeRef` is just the raw identifier the user wrote (e.g. `Int`), captured verbatim by `Parser::type_ref` — the parser accepts *any* identifier as a type and does no validation. `Resolver::ty_ref(&TypeRef) -> Result<Type>` maps the name to a `Type`, accepting `Int`, `Float`, `Bool`, `Unit`, and `Never`; any other name is a **Resolve error** (`"Unknown type"`) reported at the type's span. This is why "unknown type" tests live in `semantic/test.rs`, not `parser/test.rs`. All annotation sites (function params and return type in `Resolver::module`/`function`, and `let` declarations in `Resolver::stmt`) go through `ty_ref`. There is no `TypeRef::lower`; that mapping now lives in `ty_ref`.
+
+`Unit` is the type of functions with no return type annotation. It has no literal and cannot be stored in a variable, though it may now be written explicitly as a type name. `Never` is the bottom type of diverging expressions (`return`/`break`/`continue`); it has no literal, no Wasm representation, and is compatible with every type (see "The `Never` type" above).
 
 ### Type-to-Wasm mapping
 
