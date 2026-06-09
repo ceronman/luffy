@@ -1,3 +1,4 @@
+mod numbers;
 #[cfg(test)]
 mod test;
 
@@ -361,30 +362,20 @@ impl<'src> Parser<'src> {
                 kind: LiteralKind::Bool(false),
             },
             TokenKind::Int => {
-                let value = self.slice(token.span);
-                let value: i64 = match value.parse() {
+                let text = self.slice(token.span);
+                let value = match numbers::parse_int_literal(text) {
                     Ok(v) => v,
-                    Err(e) => {
-                        return error(
-                            self.current.span,
-                            format!("Unable to parse integer value: {e}"),
-                        );
-                    }
+                    Err(msg) => return error(token.span, msg),
                 };
                 ExprKind::Literal {
                     kind: LiteralKind::Int(value),
                 }
             }
             TokenKind::Float => {
-                let value = self.slice(token.span);
-                let value: f64 = match value.parse() {
+                let text = self.slice(token.span);
+                let value = match numbers::parse_float_literal(text) {
                     Ok(v) => v,
-                    Err(e) => {
-                        return error(
-                            self.current.span,
-                            format!("Unable to parse float value: {e}"),
-                        );
-                    }
+                    Err(msg) => return error(token.span, msg),
                 };
                 ExprKind::Literal {
                     kind: LiteralKind::Float(value),

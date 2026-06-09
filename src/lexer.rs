@@ -169,7 +169,7 @@ impl<'src> Lexer<'src> {
             ('.', _) => TokenKind::Dot,
             (':', _) => TokenKind::Colon,
             (';', _) => TokenKind::Semicolon,
-            ('0'..='9', _) => self.number(),
+            ('0'..='9', _) => self.number(c),
             ('"', _) => self.string(),
             (c, _) if c == '_' || c.is_alphabetic() => self.identifier(),
             _ => TokenKind::Error,
@@ -224,19 +224,47 @@ impl<'src> Lexer<'src> {
         }
     }
 
-    fn number(&mut self) -> TokenKind {
-        // TODO: implement floats starting with dot and proper notation.
-        while let Some('0'..='9') = self.peek() {
-            self.eat();
+    /// Recognized integer forms:
+    ///   - decimal:     `42`, `1_000`
+    ///   - hexadecimal: `0xFF`, `0xDE_AD`
+    ///   - octal:       `0o17`
+    ///   - binary:      `0b1010_0101`
+    fn number(&mut self, first: char) -> TokenKind {
+        if first == '0' {
+            if let Some('x' | 'X' | 'o' | 'O' | 'b' | 'B') = self.peek() {
+                self.eat(); // consume the base prefix letter
+                while let Some(c) = self.peek() {
+                    if c.is_ascii_alphanumeric() || c == '_' {
+                        self.eat();
+                    } else {
+                        break;
+                    }
+                }
+                return TokenKind::Int;
+            }
         }
+
+        // Decimal integer part (digits and `_` separators).
+        self.decimal_digits();
+
+        // A fractional part makes this a float.
+        // TODO: implement floats starting with dot and proper notation.
         if let Some('.') = self.peek() {
             self.eat();
-            while let Some('0'..='9') = self.peek() {
-                self.eat();
-            }
+            self.decimal_digits();
             TokenKind::Float
         } else {
             TokenKind::Int
+        }
+    }
+
+    fn decimal_digits(&mut self) {
+        while let Some(c) = self.peek() {
+            if c.is_ascii_digit() || c == '_' {
+                self.eat();
+            } else {
+                break;
+            }
         }
     }
 

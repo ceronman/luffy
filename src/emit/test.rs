@@ -88,6 +88,28 @@ fn literals() {
 }
 
 #[test]
+fn integer_literal_bases() {
+    // Hexadecimal, octal and binary literals evaluate to the same values as
+    // their decimal counterparts, and `_` separators are ignored.
+    let src = r#"
+        print_int(0xFF)
+        print_int(0o17)
+        print_int(0b101)
+        print_int(0xDE_AD)
+        print_int(1_000_000)
+        print_int(0x7FFF_FFFF_FFFF_FFFF)
+    "#;
+    assert_snapshot!(run_main(src), @"
+    255
+    15
+    5
+    57005
+    1000000
+    9223372036854775807
+    ");
+}
+
+#[test]
 fn int_operators() {
     let src = r#"
         print_int(1 + 1)

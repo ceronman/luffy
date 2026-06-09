@@ -40,6 +40,28 @@ let x Color = 1   // error: Unknown type
 
 Besides the three primitives, two further types have names you can write but no literal values: `Unit` (the "no value" type of functions that return nothing) and `Never` (the type of expressions like `return` that never produce a value — see the section on `return` below).
 
+### Integer literals
+
+`Int` literals can be written in four bases. The `0x`/`0o`/`0b` prefixes and the hexadecimal digits `a`–`f` are case-insensitive:
+
+```luffy
+let dec Int = 42       // decimal
+let hex Int = 0xFF     // hexadecimal — 255
+let oct Int = 0o17     // octal       — 15
+let bin Int = 0b101    // binary      — 5
+```
+
+An underscore may be used as a separator between digits to group long numbers. It is purely cosmetic and may appear in any base (and in float literals too):
+
+```luffy
+let million Int = 1_000_000
+let mask    Int = 0xDE_AD_BE_EF
+let flags   Int = 0b1010_0101
+let pi      Float = 3.141_592
+```
+
+Underscores must sit *between* two digits. A leading, trailing, or doubled underscore (`_1`, `1_`, `1__0`), an underscore next to the base prefix (`0x_FF`), and digits that are illegal for the chosen base (`0o18`, `0xGG`) are all errors.
+
 ---
 
 ## Variables

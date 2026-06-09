@@ -56,6 +56,129 @@ fn float_literal() {
     assert_snapshot!(parse_expr("3.14"), @"Float[3.14]");
 }
 
+// New snapshots left empty: run `cargo insta test && cargo insta review`.
+
+#[test]
+fn hexadecimal_literal() {
+    assert_snapshot!(parse_expr("0xFF"), @"Int[255]");
+}
+
+#[test]
+fn hexadecimal_literal_lowercase() {
+    assert_snapshot!(parse_expr("0xff"), @"Int[255]");
+}
+
+#[test]
+fn hexadecimal_literal_uppercase_prefix() {
+    assert_snapshot!(parse_expr("0X1a"), @"Int[26]");
+}
+
+#[test]
+fn octal_literal() {
+    assert_snapshot!(parse_expr("0o17"), @"Int[15]");
+}
+
+#[test]
+fn binary_literal() {
+    assert_snapshot!(parse_expr("0b101"), @"Int[5]");
+}
+
+#[test]
+fn decimal_literal_with_underscores() {
+    assert_snapshot!(parse_expr("1_000_000"), @"Int[1000000]");
+}
+
+#[test]
+fn hexadecimal_literal_with_underscores() {
+    assert_snapshot!(parse_expr("0xDE_AD_BE_EF"), @"Int[3735928559]");
+}
+
+#[test]
+fn octal_literal_with_underscores() {
+    assert_snapshot!(parse_expr("0o1_7"), @"Int[15]");
+}
+
+#[test]
+fn binary_literal_with_underscores() {
+    assert_snapshot!(parse_expr("0b1010_0101"), @"Int[165]");
+}
+
+#[test]
+fn float_literal_with_underscores() {
+    assert_snapshot!(parse_expr("1_000.000_5"), @"Float[1000.0005]");
+}
+
+#[test]
+fn max_int_literal_hex() {
+    assert_snapshot!(parse_expr("0x7FFF_FFFF_FFFF_FFFF"), @"Int[9223372036854775807]");
+}
+
+// ── Literal error cases ───────────────────────────────────────────────────────
+
+#[test]
+fn invalid_octal_digit() {
+    assert_snapshot!(parse_expr("0o18"), @"
+    0o18
+    ^^^^ ─── Invalid octal integer literal `0o18`: invalid digit `8`
+    ");
+}
+
+#[test]
+fn invalid_hexadecimal_digit() {
+    assert_snapshot!(parse_expr("0xGG"), @"
+    0xGG
+    ^^^^ ─── Invalid hexadecimal integer literal `0xGG`: invalid digit `G`
+    ");
+}
+
+#[test]
+fn invalid_binary_digit() {
+    assert_snapshot!(parse_expr("0b12"), @"
+    0b12
+    ^^^^ ─── Invalid binary integer literal `0b12`: invalid digit `2`
+    ");
+}
+
+#[test]
+fn missing_digits_after_base_prefix() {
+    assert_snapshot!(parse_expr("0x"), @"
+    0x
+    ^^ ─── Invalid hexadecimal integer literal `0x`: missing digits
+    ");
+}
+
+#[test]
+fn leading_underscore_separator_is_rejected() {
+    assert_snapshot!(parse_expr("0x_FF"), @"
+    0x_FF
+    ^^^^^ ─── Invalid hexadecimal integer literal `0x_FF`: `_` separators must appear between digits
+    ");
+}
+
+#[test]
+fn trailing_underscore_separator_is_rejected() {
+    assert_snapshot!(parse_expr("1_000_"), @"
+    1_000_
+    ^^^^^^ ─── Invalid decimal integer literal `1_000_`: `_` separators must appear between digits
+    ");
+}
+
+#[test]
+fn consecutive_underscore_separators_are_rejected() {
+    assert_snapshot!(parse_expr("1__000"), @"
+    1__000
+    ^^^^^^ ─── Invalid decimal integer literal `1__000`: consecutive `_` separators are not allowed
+    ");
+}
+
+#[test]
+fn integer_literal_overflow() {
+    assert_snapshot!(parse_expr("0xFFFF_FFFF_FFFF_FFFF"), @"
+    0xFFFF_FFFF_FFFF_FFFF
+    ^^^^^^^^^^^^^^^^^^^^^ ─── Unable to parse integer value `0xFFFF_FFFF_FFFF_FFFF`: number too large to fit in target type
+    ");
+}
+
 #[test]
 fn bool_literal_true() {
     assert_snapshot!(parse_expr("true"), @"Bool[true]");

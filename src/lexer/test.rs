@@ -77,6 +77,39 @@ fn numbers() {
 }
 
 #[test]
+fn hexadecimal_numbers() {
+    // Each literal is lexed as a single `Int` token; the parser interprets it.
+    // Snapshot left empty: run `cargo insta test && cargo insta review`.
+    assert_snapshot!(tokens("0xFF 0xff 0xDE_AD 0X1a"), @"[ `<Int>  `<Int>  `<Int>  `<Int> ]");
+}
+
+#[test]
+fn octal_numbers() {
+    // Snapshot left empty: run `cargo insta test && cargo insta review`.
+    assert_snapshot!(tokens("0o17 0o755 0O1_7"), @"[ `<Int>  `<Int>  `<Int> ]");
+}
+
+#[test]
+fn binary_numbers() {
+    // Snapshot left empty: run `cargo insta test && cargo insta review`.
+    assert_snapshot!(tokens("0b101 0b1010_0101 0B11"), @"[ `<Int>  `<Int>  `<Int> ]");
+}
+
+#[test]
+fn underscore_separated_numbers() {
+    // Snapshot left empty: run `cargo insta test && cargo insta review`.
+    assert_snapshot!(tokens("1_000 1_000_000 1_000.000_5"), @"[ `<Int>  `<Int>  <Float> ]");
+}
+
+#[test]
+fn malformed_numbers_are_single_tokens() {
+    // The lexer greedily captures a base-prefixed literal as one token even
+    // when the digits are illegal for the base; the parser reports the error.
+    // Snapshot left empty: run `cargo insta test && cargo insta review`.
+    assert_snapshot!(tokens("0o18 0xGG 0b12"), @"[ `<Int>  `<Int>  `<Int> ]");
+}
+
+#[test]
 fn trivial() {
     assert_snapshot!(
         tokens_with_trivial(r#"
