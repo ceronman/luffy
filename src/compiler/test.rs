@@ -27,6 +27,7 @@ fn simple_function() {
         i64.const 1
         i64.const 1
         i64.add
+        return
       )
     )
     ")
@@ -56,6 +57,7 @@ fn return_integer_literal() {
       (type (;0;) (func (result i64)))
       (func (;0;) (type 0) (result i64)
         i64.const 42
+        return
       )
     )
     ");
@@ -82,6 +84,7 @@ fn expression_statements_drop_the_stack() {
         local.get 0
         local.get 0
         i64.mul
+        return
       )
       (func (;2;) (type 2)
         i64.const 256
@@ -102,6 +105,7 @@ fn return_bool_literal() {
       (type (;0;) (func (result i32)))
       (func (;0;) (type 0) (result i32)
         i32.const 1
+        return
       )
     )
     ");
@@ -129,6 +133,7 @@ fn integer_subtraction() {
         local.get 0
         local.get 1
         i64.sub
+        return
       )
     )
     ");
@@ -143,6 +148,7 @@ fn integer_multiplication() {
         local.get 0
         local.get 1
         i64.mul
+        return
       )
     )
     ");
@@ -157,6 +163,7 @@ fn integer_division() {
         local.get 0
         local.get 1
         i64.div_s
+        return
       )
     )
     ");
@@ -171,6 +178,7 @@ fn integer_modulo() {
         local.get 0
         local.get 1
         i64.rem_s
+        return
       )
     )
     ");
@@ -186,6 +194,7 @@ fn integer_negation() {
         i64.const 0
         local.get 0
         i64.sub
+        return
       )
     )
     ");
@@ -202,6 +211,7 @@ fn float_addition() {
         local.get 0
         local.get 1
         f64.add
+        return
       )
     )
     ");
@@ -216,6 +226,7 @@ fn float_subtraction() {
         local.get 0
         local.get 1
         f64.sub
+        return
       )
     )
     ");
@@ -230,6 +241,7 @@ fn float_multiplication() {
         local.get 0
         local.get 1
         f64.mul
+        return
       )
     )
     ");
@@ -244,6 +256,7 @@ fn float_division() {
         local.get 0
         local.get 1
         f64.div
+        return
       )
     )
     ");
@@ -258,6 +271,7 @@ fn float_negation() {
       (func (;0;) (type 0) (param f64) (result f64)
         local.get 0
         f64.neg
+        return
       )
     )
     ");
@@ -275,6 +289,7 @@ fn integer_equality() {
         local.get 0
         local.get 1
         i64.eq
+        return
       )
     )
     ");
@@ -289,6 +304,7 @@ fn integer_inequality() {
         local.get 0
         local.get 1
         i64.ne
+        return
       )
     )
     ");
@@ -303,6 +319,7 @@ fn integer_less_than() {
         local.get 0
         local.get 1
         i64.lt_s
+        return
       )
     )
     ");
@@ -317,6 +334,7 @@ fn integer_greater_than() {
         local.get 0
         local.get 1
         i64.gt_s
+        return
       )
     )
     ");
@@ -333,6 +351,7 @@ fn float_equality() {
         local.get 0
         local.get 1
         f64.eq
+        return
       )
     )
     ");
@@ -347,6 +366,7 @@ fn float_less_than() {
         local.get 0
         local.get 1
         f64.lt
+        return
       )
     )
     ");
@@ -372,6 +392,7 @@ fn local_variable_declaration() {
         i64.const 42
         local.set 0
         local.get 0
+        return
       )
     )
     ");
@@ -397,6 +418,7 @@ fn variable_reassignment() {
         i64.const 2
         local.set 0
         local.get 0
+        return
       )
     )
     ");
@@ -421,6 +443,7 @@ fn params_and_locals_share_index_space() {
         local.get 0
         local.get 1
         i64.add
+        return
       )
     )
     ");
@@ -443,10 +466,12 @@ fn function_call() {
         local.get 0
         local.get 0
         i64.add
+        return
       )
       (func (;1;) (type 1) (result i64)
         i64.const 5
         call 0
+        return
       )
     )
     ");
@@ -465,11 +490,13 @@ fn function_call_not_yet_declared() {
       (func (;0;) (type 0) (result i64)
         i64.const 5
         call 1
+        return
       )
       (func (;1;) (type 1) (param i64) (result i64)
         local.get 0
         local.get 0
         i64.add
+        return
       )
     )
     ");
@@ -488,6 +515,7 @@ fn exported_function() {
         local.get 0
         local.get 1
         i64.add
+        return
       )
     )
     "#);
@@ -551,6 +579,7 @@ fn logical_operators() {
         else
           i32.const 0
         end
+        return
       )
       (func (;1;) (type 1) (param i32 i32) (result i32)
         local.get 0
@@ -559,10 +588,12 @@ fn logical_operators() {
         else
           local.get 1
         end
+        return
       )
       (func (;2;) (type 2) (param i32) (result i32)
         local.get 0
         i32.eqz
+        return
       )
     )
     ");
@@ -585,6 +616,7 @@ fn if_expression_compiles_to_if_else_result() {
         else
           i64.const 2
         end
+        return
       )
     )
     ");
@@ -605,6 +637,7 @@ fn if_expression_colon_form() {
         else
           i64.const 2
         end
+        return
       )
     )
     ");
@@ -837,4 +870,52 @@ fn break_nested_in_if_uses_deeper_label() {
       )
     )
     "#);
+}
+
+// ── `return` expression compilation ───────────────────────────────────────────
+
+#[test]
+fn return_emits_return_instruction() {
+    // A `return` lowers to evaluating the value followed by a Wasm `return`.
+    assert_snapshot!(compile_to_wat("fn f(a Int) Int { return a + 1 }"), @"
+    (module
+      (type (;0;) (func (param i64) (result i64)))
+      (func (;0;) (type 0) (param i64) (result i64)
+        local.get 0
+        i64.const 1
+        i64.add
+        return
+      )
+    )
+    ");
+}
+
+#[test]
+fn early_return_in_if_branch() {
+    // The early `return` inside the `if` returns from the function; the trailing
+    // `return` provides the value on the fall-through path.
+    let src = r#"
+        fn f(a Int) Int {
+            if a > 0 { 
+                return 1 
+            } 
+            return 2
+        }
+    "#;
+    assert_snapshot!(compile_to_wat(src), @"
+    (module
+      (type (;0;) (func (param i64) (result i64)))
+      (func (;0;) (type 0) (param i64) (result i64)
+        local.get 0
+        i64.const 0
+        i64.gt_s
+        if ;; label = @1
+          i64.const 1
+          return
+        end
+        i64.const 2
+        return
+      )
+    )
+    ");
 }

@@ -172,7 +172,6 @@ impl<'src> Parser<'src> {
         match self.current.kind {
             TokenKind::Let => self.declaration(),
             TokenKind::While => self.while_statement(),
-            TokenKind::Return => self.return_statement(),
             _ => self.expr_stmt(),
         }
     }
@@ -201,6 +200,7 @@ impl<'src> Parser<'src> {
             TokenKind::If => self.if_expr()?,
             TokenKind::Break => self.break_expr()?,
             TokenKind::Continue => self.continue_expr()?,
+            TokenKind::Return => self.return_expr()?,
 
             other_kind => {
                 return error(self.current.span, format!("Unexpected {}", other_kind));
@@ -538,12 +538,13 @@ impl<'src> Parser<'src> {
         })
     }
 
-    fn return_statement(&mut self) -> Result<Stmt> {
-        let return_kw = self.expect(TokenKind::Return)?;
+    fn return_expr(&mut self) -> Result<Expr> {
+        let kw = self.expect(TokenKind::Return)?;
         let expr = self.expression()?;
-        Ok(Stmt {
-            node: self.node(return_kw.span, expr.node.span),
-            kind: StmtKind::Return { expr },
+        let end = expr.node.span;
+        Ok(Expr {
+            node: self.node(kw.span, end),
+            kind: ExprKind::Return { expr: expr.into() },
         })
     }
 

@@ -47,6 +47,7 @@ pub enum Instruction {
     Loop(BlockType),
     Br(LabelIdx),
     BrIf(LabelIdx),
+    Return,
 
     I64Const(i64),
     I64Add,

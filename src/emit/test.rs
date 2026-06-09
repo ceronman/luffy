@@ -510,3 +510,45 @@ fn continue_skips_rest_of_body() {
     5
     ");
 }
+
+// ── `return` execution ────────────────────────────────────────────────────────
+
+#[test]
+fn early_return_from_function() {
+    let src = r#"
+        import fn print_int(x Int)
+        fn classify(n Int) Int {
+            if n > 0 {
+                return 1
+            }
+            return 0
+        }
+        export fn main() {
+            print_int(classify(5))
+            print_int(classify(-3))
+        }
+    "#;
+    assert_snapshot!(compile_and_run(src), @"
+    1
+    0
+    ");
+}
+
+#[test]
+fn return_value_from_if_else() {
+    let src = r#"
+        import fn print_int(x Int)
+        fn pick(n Int) Int {
+            let x Int = if n > 0 { return 0 } else { 5 }
+            return x
+        }
+        export fn main() {
+            print_int(pick(1))
+            print_int(pick(-1))
+        }
+    "#;
+    assert_snapshot!(compile_and_run(src), @"
+    0
+    5
+    ");
+}

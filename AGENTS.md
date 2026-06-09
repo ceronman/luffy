@@ -112,16 +112,14 @@ enum BlockKind {
 
 ```rust
 enum StmtKind {
-    Block       { statements: Vec<Stmt> },
     Declaration { name, ty: TypeRef, initializer: Expr },   // let x T = expr
     Assignment  { target: Expr, value: Expr },              // x = expr
     While       { condition: Expr, body: Box<Block> },      // while cond { ... } / while cond: expr
-    Return      { expr: Expr },
     ExprStmt    { expr: Expr },
 }
 ```
 
-**`if` is implemented** as an `ExprKind` variant (see Expressions below), not a `StmtKind`. **`while` is implemented** as a `StmtKind` variant (see Loops below).
+**`if` is implemented** as an `ExprKind` variant (see Expressions below), not a `StmtKind`. **`while` is implemented** as a `StmtKind` variant (see Loops below). **`return`** is an `ExprKind` variant (it is an expression of type `Never`, see below), not a `StmtKind`.
 
 ### Expressions
 
@@ -133,8 +131,9 @@ enum ExprKind {
     Binary   { op: BinOp, left: Box<Expr>, right: Box<Expr> },
     Call     { callee: Box<Expr>, args: Vec<Expr> },
     If       { condition: Box<Expr>, then_branch: Box<Block>, else_branch: Option<Box<Block>> },
-    Break,                                                   // break (Unit; loops only)
-    Continue,                                                // continue (Unit; loops only)
+    Break,                                                   // break    (Never; loops only)
+    Continue,                                                // continue (Never; loops only)
+    Return   { expr: Box<Expr> },                            // return e (Never)
 }
 ```
 
@@ -174,19 +173,30 @@ This statement-vs-expression `else` rule matches Kotlin. The `Resolver` tracks t
 
 #### `break` / `continue`
 
-`break` and `continue` are `ExprKind::Break` / `ExprKind::Continue` — value-less expressions of type `Unit`, parsed as prefixes in `expression_precedence` (`Parser::break_expr` / `continue_expr`). Being `Unit` expressions, they double as statements (an `ExprStmt`) and may appear in any expression slot, e.g. a colon `if` branch.
+`break` and `continue` are `ExprKind::Break` / `ExprKind::Continue` — value-less expressions of type `Never` (see "The `Never` type" below), parsed as prefixes in `expression_precedence` (`Parser::break_expr` / `continue_expr`). They double as statements (an `ExprStmt`) and may appear in any expression slot, e.g. a colon `if` branch.
 
-- **Semantic**: the `Resolver` tracks `loop_depth`, incremented around a `while` body. The `ExprKind::Break` / `Continue` arms in `Resolver::expr` give type `Unit` and error ("'break' outside of a loop") when `loop_depth == 0`.
-- **Compiler**: Wasm `br` takes a *relative* label index, so the compiler tracks `control_depth` (the count of open `block`/`loop`/`if` frames — incremented around the `While` arm's block+loop, the `If` arm, and the `and`/`or` short-circuit `if`s) and a `loop_stack` of `LoopFrame { break_target, continue_target }` recording each loop's frame indices. `break`/`continue` lower to `Br((control_depth - 1) - target)`, which is correct at any nesting depth (e.g. `break` from inside an `if` in the body emits `br 2`). Because of this state, the body-lowering methods (`function`, `block`, `stmt`, `expr`, `branch`, `expr_stmt`) take `&mut self`; `function` resets `control_depth`/`loop_stack` per function.
+- **Semantic**: the `Resolver` tracks `loop_depth`, incremented around a `while` body. The `ExprKind::Break` / `Continue` arms in `Resolver::expr` give type `Never` and error ("'break' outside of a loop") when `loop_depth == 0`.
+- **Compiler**: Wasm `br` takes a *relative* label index, so the compiler keeps a `LoopControl { depth, stack }` (`self.loops`) where `depth` counts open `block`/`loop`/`if` frames (bumped via `enter_frame`/`exit_frame` around the `If` arm and the `and`/`or` short-circuit `if`s, and `enter_loop`/`exit_loop` around the `While` arm's block+loop) and `stack` is a `VecDeque<LoopFrame>` of `{ break_target, continue_target }` frame indices. `break`/`continue` lower to `Br((depth - 1) - target)` (via `break_label`/`continue_label`), correct at any nesting depth (e.g. `break` from inside an `if` emits `br 2`). Because of this state, the body-lowering methods (`function`, `block`, `stmt`, `expr`, `branch`, `expr_stmt`) take `&mut self`; `function` calls `self.loops.reset()` per function.
+
+#### `return` and `Never`
+
+`return` is `ExprKind::Return { expr }`, a prefix expression (`Parser::return_expr`) of type `Never`. Its operand must match the enclosing function's return type (checked in `Resolver::expr`). It lowers (`Compiler::expr`) to the value followed by a Wasm `return` instruction, so it is correct in any position — including early returns inside `if` branches. Note this means a *tail* `return` also emits a (redundant but valid) `return` instruction.
+
+`Never` (`semantic::Type::Never`) is the bottom type — the type of expressions that never yield a value because control leaves them (`return`/`break`/`continue`). Key rules:
+
+- `check_ty_match` succeeds whenever **either** side is `Never` (it is compatible with every type).
+- In `if_expr`, when one branch is `Never` the whole `if` takes the *other* branch's type (the "join"), so `let x Int = if c { return 0 } else { 5 }` type-checks as `Int`.
+- A braces function body with a non-`Unit` return type must have block type `Never` (it ends in a `return`, or an `if`/`else` where all branches `return`) — otherwise it's a "Missing return statement" error. (Replaces the old "last statement is literally a `return`" check, so `if`/`else`-return bodies now type-check.)
+- In the compiler, an `if` whose node type is `Never` uses `BlockType::Empty` (no result), and `expr_stmt` does not emit a `drop` for `Never` (or `Unit`) values. `Never` is never passed to `Type::lower()`.
 
 ### Types
 
 ```rust
 enum TypeKind { Int, Float, Bool }              // in AST (syntax)
-enum Type { Unit, Int, Float, Bool, Function { params, ret } }  // in semantic (runtime)
+enum Type { Unit, Int, Float, Bool, Never, Function { params, ret } }  // in semantic (runtime)
 ```
 
-`Unit` is the type of functions with no return type annotation. It has no literal and cannot be stored in a variable.
+`Unit` is the type of functions with no return type annotation. It has no literal and cannot be stored in a variable. `Never` is the bottom type of diverging expressions (`return`/`break`/`continue`); it has no literal, no Wasm representation, and is compatible with every type (see "The `Never` type" above).
 
 ### Type-to-Wasm mapping
 

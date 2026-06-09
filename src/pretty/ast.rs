@@ -97,7 +97,6 @@ impl PrettyAst {
     }
     fn stmt(statement: &Stmt) -> PrettyAst {
         match &statement.kind {
-            StmtKind::Return { expr } => Self::new("Return", vec![Self::expression(expr)]),
             StmtKind::ExprStmt { expr } => Self::expression(expr),
             StmtKind::Declaration {
                 name,
@@ -157,6 +156,7 @@ impl PrettyAst {
             }
             ExprKind::Break => Self::new("Break", vec![]),
             ExprKind::Continue => Self::new("Continue", vec![]),
+            ExprKind::Return { expr } => Self::new("Return", vec![Self::expression(expr)]),
         }
     }
 

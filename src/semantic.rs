@@ -30,6 +30,7 @@ pub enum Type {
     Int,
     Float,
     Bool,
+    Never,
     Function { params: Rc<[Type]>, ret: Rc<Type> },
 }
 
@@ -46,6 +47,9 @@ impl Type {
     pub fn is_unit(&self) -> bool {
         matches!(self, Type::Unit)
     }
+    pub fn is_never(&self) -> bool {
+        matches!(self, Type::Never)
+    }
 }
 
 impl Display for Type {
@@ -55,6 +59,7 @@ impl Display for Type {
             Type::Int => write!(f, "Int"),
             Type::Float => write!(f, "Float"),
             Type::Bool => write!(f, "Bool"),
+            Type::Never => write!(f, "Never"),
             Type::Function { .. } => write!(f, "Function"), // TODO: improve
         }
     }
@@ -95,7 +100,9 @@ fn type_err<T: Debug>(span: Span, message: impl Into<String>) -> crate::parser::
 }
 
 fn check_ty_match(span: Span, expected: &Type, actual: &Type) -> crate::parser::Result<()> {
-    if actual == expected {
+    // `Never` is compatible with any type: an expression of type `Never` never
+    // yields a value, so it can stand in wherever any type is expected.
+    if actual == expected || expected.is_never() || actual.is_never() {
         Ok(())
     } else {
         type_err(
@@ -172,16 +179,13 @@ impl Resolver {
     fn block(&mut self, block: &Block, func_id: DeclarationId) -> Result<()> {
         match &block.kind {
             BlockKind::Braces { statements } => {
+                let mut block_ty = Type::Unit;
                 for stmt in statements {
-                    self.stmt(stmt, func_id)?;
+                    block_ty = self.stmt(stmt, func_id)?;
                 }
-                // TODO: Improve this logic to catch other control flow statements
+                // TODO: Improve this logic to be more clear
                 let ret = self.function_ret_ty(block.node, func_id)?;
-                let ends_with_return = matches!(
-                    statements.last().map(|s| &s.kind),
-                    Some(StmtKind::Return { .. })
-                );
-                if !ret.is_unit() && !ends_with_return {
+                if !ret.is_unit() && !block_ty.is_never() {
                     let end = block.node.span.end;
                     return type_err(Span::new(end - 1, end), "Missing return statement");
                 }
@@ -245,15 +249,6 @@ impl Resolver {
                 let result = self.block_type(body, func_id);
                 self.loop_depth -= 1;
                 result?;
-                Type::Unit
-            }
-            StmtKind::Return { expr } => {
-                let ty = self.expr(expr, func_id)?;
-                let function_decl = &self.semantics.declarations[func_id];
-                let Type::Function { ret, .. } = &function_decl.ty else {
-                    return resolve_err(expr.node.span, "Return outside of function");
-                };
-                check_ty_match(expr.node.span, ret, &ty)?;
                 Type::Unit
             }
         };
@@ -372,13 +367,19 @@ impl Resolver {
                 if self.loop_depth == 0 {
                     return resolve_err(expr.node.span, "'break' outside of a loop");
                 }
-                Type::Unit
+                Type::Never
             }
             ExprKind::Continue => {
                 if self.loop_depth == 0 {
                     return resolve_err(expr.node.span, "'continue' outside of a loop");
                 }
-                Type::Unit
+                Type::Never
+            }
+            ExprKind::Return { expr: inner } => {
+                let inner_ty = self.expr(inner, func_id)?;
+                let ret = self.function_ret_ty(inner.node, func_id)?;
+                check_ty_match(inner.node.span, &ret, &inner_ty)?;
+                Type::Never
             }
         };
         self.semantics.expr_types.insert(expr.node.id, ty.clone());
@@ -400,7 +401,8 @@ impl Resolver {
             let else_ty = self.block_type(else_branch, func_id)?;
             // TODO: node shoud be tail of block for clarity
             check_ty_match(else_branch.node.span, &then_ty, &else_ty)?;
-            then_ty
+            // TODO: maybe make `check_ty_match` return a type?
+            if then_ty.is_never() { else_ty } else { then_ty }
         } else if mandatory_else {
             return type_err(
                 node.span,

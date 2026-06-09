@@ -99,9 +99,6 @@ pub enum StmtKind {
         condition: Expr,
         body: Box<Block>,
     },
-    Return {
-        expr: Expr,
-    },
 }
 
 #[derive(Debug)]
@@ -138,6 +135,9 @@ pub enum ExprKind {
     },
     Break,
     Continue,
+    Return {
+        expr: Box<Expr>,
+    },
 }
 
 #[derive(Debug)]

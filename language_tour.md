@@ -349,9 +349,39 @@ while i < 10 {
 }
 ```
 
-Both are *expressions* of type `Unit`, so they can appear anywhere an expression can — including a colon branch as above. Because they yield `Unit`, they cannot stand in for a real value (for example, as both arms of a value-producing `if`). Using `break` or `continue` outside a loop is a compile error.
+Both are *expressions* of type `Never` (see below), so they can appear anywhere an expression can — including a colon branch as above. Using `break` or `continue` outside a loop is a compile error.
 
 Note the usual `continue` caveat: make sure the loop still makes progress before the `continue`, or it will spin forever. Above, `i` is incremented before any `continue`.
+
+---
+
+## `return` and the `Never` type
+
+`return` is also an expression. It hands a value back to the caller and stops executing the current function:
+
+```luffy
+fn classify(n Int) Int {
+    if n > 0 {
+        return 1
+    }
+    return 0
+}
+```
+
+Because `return` never produces a value *to its surrounding expression* — control leaves the function instead — its type is `Never`. The same is true of `break` and `continue`, which transfer control out of (or around) a loop rather than yielding a value.
+
+`Never` is the *bottom type*: the type with no values. It is compatible with every other type, so an expression that diverges can appear wherever any type is expected. This is what lets one branch of a value-producing `if` bail out while the other supplies the value:
+
+```luffy
+fn first_positive(a Int, b Int) Int {
+    let x Int = if a > 0 { a } else { return b }   // else-branch is Never
+    return x
+}
+```
+
+Here the `else` branch has type `Never`, so the `if` takes the type of the other branch (`Int`). A non-`Unit` function must always end by diverging — either a trailing `return`, or an `if`/`else` in which every branch returns.
+
+Other languages have the same idea under different names: Rust calls it `!` (the "never type"), Kotlin and Scala call it `Nothing`, TypeScript and Swift call it `Never`, and Haskell's empty type is `Void`. In every case it is the uninhabited type used to type expressions that never return normally.
 
 ---
 

@@ -628,3 +628,62 @@ fn error_continue_outside_loop() {
              ^^^^^^^^ ─── 'continue' outside of a loop
     ");
 }
+
+// ── `return` / `Never` tests ──────────────────────────────────────────────────
+
+#[test]
+fn valid_tail_return() {
+    assert_snapshot!(check("fn f() Int { return 1 }"), @"<no error>");
+}
+
+#[test]
+fn valid_early_return_in_if() {
+    // The block diverges via the trailing `return`, so it satisfies the Int
+    // return type even though an `if` precedes it.
+    let src = r#"
+        fn f(a Int) Int {
+            if a > 0 {
+                return 1
+            }
+            return 2
+        }"#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn valid_if_else_both_return() {
+    // Both branches diverge (`Never`), so the `if` statement has type `Never`
+    // and counts as the function's diverging tail.
+    let src = "fn f(a Int) Int { if a > 0 { return 1 } else { return 2 } }";
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn valid_never_branch_takes_other_branch_type() {
+    // `return` makes the then-branch `Never`; the `if` expression's type comes
+    // from the else-branch (`Int`), so it can initialize an `Int`.
+    let src = r#"
+        fn f(a Int) Int {
+            let x Int = if a > 0 {
+                return 0
+            } else { 5 }
+            return x }
+        "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn error_return_wrong_type() {
+    assert_snapshot!(check("fn f() Int { return true }"), @"
+    fn f() Int { return true }
+                        ^^^^ ─── Type mismatch: expected 'Int', found 'Bool'
+    ");
+}
+
+#[test]
+fn error_missing_return_non_unit() {
+    assert_snapshot!(check("fn f() Int { let x Int = 1 }"), @"
+    fn f() Int { let x Int = 1 }
+                               ^ ─── Missing return statement
+    ");
+}

@@ -120,6 +120,7 @@ impl ir::Instruction {
             ir::Instruction::Loop(block_type) => Instruction::Loop(block_type.encode()),
             ir::Instruction::Br(label) => Instruction::Br(*label),
             ir::Instruction::BrIf(label) => Instruction::BrIf(*label),
+            ir::Instruction::Return => Instruction::Return,
             ir::Instruction::Call(func_idx) => Instruction::Call(*func_idx),
             ir::Instruction::Drop => Instruction::Drop,
             ir::Instruction::End => Instruction::End,

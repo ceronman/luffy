@@ -254,15 +254,16 @@ impl Compiler {
                 ins.push(ir::Instruction::End);
                 ins.push(ir::Instruction::End);
             }
-            ast::StmtKind::Return { expr } => {
-                self.expr(ins, expr);
-            }
         }
     }
 
     fn expr_stmt(&mut self, ins: &mut Vec<ir::Instruction>, expr: &ast::Expr) {
         self.expr(ins, expr);
-        if !self.node_type(expr.node).is_unit() {
+        // Only "real" values (Int/Float/Bool) leave something on the stack to
+        // drop. `Unit` produces nothing, and `Never` (return/break/continue)
+        // diverges, so neither needs a `drop`.
+        let ty = self.node_type(expr.node);
+        if !ty.is_unit() && !ty.is_never() {
             ins.push(ir::Instruction::Drop);
         }
     }
@@ -372,7 +373,9 @@ impl Compiler {
             } => {
                 self.expr(ins, condition);
                 let ty = self.node_type(expr.node);
-                let block_type = if ty.is_unit() {
+                // `Never` (e.g. both branches `return`) yields no value, so the
+                // Wasm `if` has no result type, like `Unit`.
+                let block_type = if ty.is_unit() || ty.is_never() {
                     ir::BlockType::Empty
                 } else {
                     ir::BlockType::Result(ty.lower())
@@ -392,6 +395,11 @@ impl Compiler {
             }
             ast::ExprKind::Continue => {
                 ins.push(ir::Instruction::Br(self.loops.continue_label()));
+            }
+            ast::ExprKind::Return { expr: inner } => {
+                // Evaluate the return value, then return from the function.
+                self.expr(ins, inner);
+                ins.push(ir::Instruction::Return);
             }
         }
     }

@@ -615,9 +615,9 @@ fn error_function_body_must_be_block_or_colon() {
 #[test]
 fn error_short_body_requires_expression() {
     // After `:` an expression is required, not a statement.
-    assert_snapshot!(parse_module("fn f() Int: return 5"), @"
-    fn f() Int: return 5
-                ^^^^^^ ─── Unexpected `return`
+    assert_snapshot!(parse_module("fn f() Int: let x: Int = 5"), @"
+    fn f() Int: let x: Int = 5
+                ^^^ ─── Unexpected `let`
     ");
 }
 
@@ -1871,5 +1871,32 @@ fn while_with_break_and_continue() {
                 └── Binary [-]
                     ├── Var [a]
                     └── Int[1]
+    ");
+}
+
+// ── `return` expression tests ─────────────────────────────────────────────────
+
+#[test]
+fn return_parses_as_expression() {
+    assert_snapshot!(parse_expr("return 1 + 2"), @"
+    Return
+    └── Binary [+]
+        ├── Int[1]
+        └── Int[2]
+    ");
+}
+
+#[test]
+fn return_inside_if_branch() {
+    assert_snapshot!(parse_stmt("if a > 0 { return 1 }"), @"
+    If
+    ├── Condition
+    │   └── Binary [>]
+    │       ├── Var [a]
+    │       └── Int[0]
+    └── Then
+        └── Block
+            └── Return
+                └── Int[1]
     ");
 }
