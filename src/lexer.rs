@@ -238,23 +238,23 @@ impl<'src> Lexer<'src> {
     /// Recognized float forms (decimal only, Python-style):
     ///   - fractional:  `3.14`, `10.`, `1_000.5`
     ///   - scientific:  `1e10`, `1.5e-3`, `2E+8`
-    ///   (leading-dot floats like `.5` enter through `dot_number`)
+    ///     (leading-dot floats like `.5` enter through `dot_number`)
     ///
     /// `first` is the first digit, already consumed.
     fn number(&mut self, first: char) -> TokenKind {
         // Base-prefixed integers: 0x.., 0o.., 0b..
-        if first == '0' {
-            if let Some('x' | 'X' | 'o' | 'O' | 'b' | 'B') = self.peek() {
-                self.eat(); // consume the base prefix letter
-                while let Some(c) = self.peek() {
-                    if c.is_ascii_alphanumeric() || c == '_' {
-                        self.eat();
-                    } else {
-                        break;
-                    }
+        if first == '0'
+            && let Some('x' | 'X' | 'o' | 'O' | 'b' | 'B') = self.peek()
+        {
+            self.eat(); // consume the base prefix letter
+            while let Some(c) = self.peek() {
+                if c.is_ascii_alphanumeric() || c == '_' {
+                    self.eat();
+                } else {
+                    break;
                 }
-                return TokenKind::Int;
             }
+            return TokenKind::Int;
         }
 
         // Decimal integer part (digits and `_` separators).

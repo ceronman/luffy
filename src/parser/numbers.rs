@@ -48,7 +48,7 @@ pub(super) fn parse_float_literal(text: &str) -> Result<f64, String> {
 
     // Split off the exponent. The mantissa never contains `e`/`E`, so the first
     // one is unambiguously the exponent marker.
-    let (mantissa, exponent) = match text.find(|c| c == 'e' || c == 'E') {
+    let (mantissa, exponent) = match text.find(['e', 'E']) {
         Some(i) => (&text[..i], Some(&text[i + 1..])),
         None => (text, None),
     };
