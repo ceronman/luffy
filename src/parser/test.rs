@@ -113,6 +113,48 @@ fn max_int_literal_hex() {
     assert_snapshot!(parse_expr("0x7FFF_FFFF_FFFF_FFFF"), @"Int[9223372036854775807]");
 }
 
+// New float snapshots left empty: run `cargo insta test && cargo insta review`.
+
+#[test]
+fn float_leading_dot() {
+    assert_snapshot!(parse_expr(".5"), @"Float[0.5]");
+}
+
+#[test]
+fn float_trailing_dot() {
+    assert_snapshot!(parse_expr("10."), @"Float[10]");
+}
+
+#[test]
+fn float_scientific_notation() {
+    assert_snapshot!(parse_expr("1e10"), @"Float[10000000000]");
+}
+
+#[test]
+fn float_scientific_uppercase() {
+    assert_snapshot!(parse_expr("1E10"), @"Float[10000000000]");
+}
+
+#[test]
+fn float_scientific_negative_exponent() {
+    assert_snapshot!(parse_expr("1.5e-3"), @"Float[0.0015]");
+}
+
+#[test]
+fn float_scientific_positive_exponent() {
+    assert_snapshot!(parse_expr("2E+8"), @"Float[200000000]");
+}
+
+#[test]
+fn float_leading_dot_with_exponent() {
+    assert_snapshot!(parse_expr(".5e3"), @"Float[500]");
+}
+
+#[test]
+fn float_scientific_with_underscores() {
+    assert_snapshot!(parse_expr("1_000.000_5e1_0"), @"Float[10000005000000]");
+}
+
 // ── Literal error cases ───────────────────────────────────────────────────────
 
 #[test]

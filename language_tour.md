@@ -62,6 +62,28 @@ let pi      Float = 3.141_592
 
 Underscores must sit *between* two digits. A leading, trailing, or doubled underscore (`_1`, `1_`, `1__0`), an underscore next to the base prefix (`0x_FF`), and digits that are illegal for the chosen base (`0o18`, `0xGG`) are all errors.
 
+### Float literals
+
+`Float` literals are always decimal and follow the same format as Python. A literal is a float if it has a decimal point, an exponent, or both:
+
+```luffy
+let a Float = 3.14
+let b Float = 10.        // digits before the dot only
+let c Float = .5         // digits after the dot only
+let d Float = 1e10       // scientific notation
+let e Float = 1.5e-3     // exponent with a sign
+let f Float = 6.022e23   // mantissa and exponent
+```
+
+The exponent marker is `e` or `E`, optionally followed by a `+` or `-` sign, and then one or more digits. At least one digit must appear on some side of the decimal point, so a bare `.` is not a number.
+
+`_` separators may appear between digits in the integer, fractional, and exponent parts, exactly as for integers:
+
+```luffy
+let big Float = 1_000.000_5
+let avo Float = 6.022_140_76e23
+```
+
 ---
 
 ## Variables

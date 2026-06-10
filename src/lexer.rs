@@ -166,6 +166,7 @@ impl<'src> Lexer<'src> {
             ('[', _) => TokenKind::LBracket,
             (']', _) => TokenKind::RBracket,
             (',', _) => TokenKind::Comma,
+            ('.', Some('0'..='9')) => self.dot_number(),
             ('.', _) => TokenKind::Dot,
             (':', _) => TokenKind::Colon,
             (';', _) => TokenKind::Semicolon,
@@ -224,12 +225,24 @@ impl<'src> Lexer<'src> {
         }
     }
 
+    /// Scans a numeric literal. The lexer only recognizes the *shape* of the
+    /// literal and emits a span-only `Int` or `Float` token; the parser turns
+    /// the text into a value.
+    ///
     /// Recognized integer forms:
     ///   - decimal:     `42`, `1_000`
     ///   - hexadecimal: `0xFF`, `0xDE_AD`
     ///   - octal:       `0o17`
     ///   - binary:      `0b1010_0101`
+    ///
+    /// Recognized float forms (decimal only, Python-style):
+    ///   - fractional:  `3.14`, `10.`, `1_000.5`
+    ///   - scientific:  `1e10`, `1.5e-3`, `2E+8`
+    ///   (leading-dot floats like `.5` enter through `dot_number`)
+    ///
+    /// `first` is the first digit, already consumed.
     fn number(&mut self, first: char) -> TokenKind {
+        // Base-prefixed integers: 0x.., 0o.., 0b..
         if first == '0' {
             if let Some('x' | 'X' | 'o' | 'O' | 'b' | 'B') = self.peek() {
                 self.eat(); // consume the base prefix letter
@@ -247,15 +260,53 @@ impl<'src> Lexer<'src> {
         // Decimal integer part (digits and `_` separators).
         self.decimal_digits();
 
-        // A fractional part makes this a float.
-        // TODO: implement floats starting with dot and proper notation.
+        // A fractional part and/or an exponent makes this a float.
+        let mut is_float = false;
         if let Some('.') = self.peek() {
+            is_float = true;
             self.eat();
             self.decimal_digits();
+        }
+        if self.maybe_exponent() {
+            is_float = true;
+        }
+
+        if is_float {
             TokenKind::Float
         } else {
             TokenKind::Int
         }
+    }
+
+    fn dot_number(&mut self) -> TokenKind {
+        self.decimal_digits();
+        self.maybe_exponent();
+        TokenKind::Float
+    }
+
+    fn maybe_exponent(&mut self) -> bool {
+        if !self.has_exponent() {
+            return false;
+        }
+        self.eat(); // 'e' or 'E'
+        if let Some('+' | '-') = self.peek() {
+            self.eat();
+        }
+        self.decimal_digits();
+        true
+    }
+
+    fn has_exponent(&self) -> bool {
+        let mut chars = self.chars.clone();
+        match chars.next() {
+            Some('e' | 'E') => {}
+            _ => return false,
+        }
+        let mut next = chars.next();
+        if let Some('+' | '-') = next {
+            next = chars.next();
+        }
+        matches!(next, Some('0'..='9'))
     }
 
     fn decimal_digits(&mut self) {

@@ -102,6 +102,37 @@ fn underscore_separated_numbers() {
 }
 
 #[test]
+fn float_leading_dot() {
+    // `.5` is a single Float token; `.` alone is still the dot token.
+    // Snapshot left empty: run `cargo insta test && cargo insta review`.
+    assert_snapshot!(tokens(".5 .25 .000_5"), @"[ <Float>  <Float>  <Float> ]");
+}
+
+#[test]
+fn float_scientific_notation() {
+    // Snapshot left empty: run `cargo insta test && cargo insta review`.
+    assert_snapshot!(tokens("1e10 1E10 1.5e-3 2E+8 .5e3 10.e3"), @"[ <Float>  <Float>  <Float>  <Float>  <Float>  <Float> ]");
+}
+
+#[test]
+fn dot_is_still_a_token_without_following_digit() {
+    // A `.` not followed by a digit must remain the standalone dot token.
+    // Snapshot left empty: run `cargo insta test && cargo insta review`.
+    assert_snapshot!(tokens("a . b ... 1 . 2"), @"
+    [ <Identifier>  `.`  <Identifier>  `.`  `.`  `.`  `<Int>  `.` 
+     `<Int> ]
+    ");
+}
+
+#[test]
+fn bare_e_is_not_an_exponent() {
+    // `e`/`E` only starts an exponent when followed by digits, so `2e` lexes
+    // as the integer `2` and the identifier `e`.
+    // Snapshot left empty: run `cargo insta test && cargo insta review`.
+    assert_snapshot!(tokens("2e 1e+ x"), @"[ `<Int>  <Identifier>  `<Int>  <Identifier>  `+`  <Identifier> ]");
+}
+
+#[test]
 fn malformed_numbers_are_single_tokens() {
     // The lexer greedily captures a base-prefixed literal as one token even
     // when the digits are illegal for the base; the parser reports the error.

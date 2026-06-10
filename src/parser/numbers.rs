@@ -33,25 +33,58 @@ pub(super) fn parse_int_literal(text: &str) -> Result<i64, String> {
         .map_err(|e| format!("Unable to parse integer value `{text}`: {e}"))
 }
 
-/// Parses the text of a `Float` literal token into an `f64`. Floats are decimal
-/// only, but may use `_` separators between digits in both the integer and
-/// fractional parts (e.g. `1_000.000_5`).
+/// Parses the text of a `Float` literal token into an `f64`.
+///
+/// Floats are decimal only and follow Python's grammar:
+///   - a fractional part with digits before and/or after the dot
+///     (`3.14`, `10.`, `.5`); at least one side must have digits, and
+///   - an optional exponent `(e|E)(+|-)?digits` (`1e10`, `1.5e-3`, `.5e9`).
+///
+/// `_` may be used as a separator between digits in the integer, fractional and
+/// exponent parts (e.g. `1_000.000_5e1_0`). The exponent marker is
+/// case-insensitive. Underscores are stripped before the value is parsed.
 pub(super) fn parse_float_literal(text: &str) -> Result<f64, String> {
-    let mut parts = text.splitn(2, '.');
-    // The lexer guarantees a float starts with a digit, so the integer part is
-    // always present and non-empty.
-    let int_part = parts.next().unwrap_or("");
-    let mut cleaned = clean_digits(int_part, |c| c.is_ascii_digit())
-        .map_err(|msg| format!("Invalid float literal `{text}`: {msg}"))?;
+    let invalid = |msg: String| format!("Invalid float literal `{text}`: {msg}");
 
-    if let Some(frac_part) = parts.next() {
-        cleaned.push('.');
-        // A trailing dot with no fractional digits (e.g. `1.`) is allowed.
-        if !frac_part.is_empty() {
-            let frac = clean_digits(frac_part, |c| c.is_ascii_digit())
-                .map_err(|msg| format!("Invalid float literal `{text}`: {msg}"))?;
-            cleaned.push_str(&frac);
+    // Split off the exponent. The mantissa never contains `e`/`E`, so the first
+    // one is unambiguously the exponent marker.
+    let (mantissa, exponent) = match text.find(|c| c == 'e' || c == 'E') {
+        Some(i) => (&text[..i], Some(&text[i + 1..])),
+        None => (text, None),
+    };
+
+    let mut cleaned = String::with_capacity(text.len());
+
+    if let Some(dot) = mantissa.find('.') {
+        let int_part = &mantissa[..dot];
+        let frac_part = &mantissa[dot + 1..];
+        if int_part.is_empty() && frac_part.is_empty() {
+            return Err(invalid(
+                "a float must have digits before or after the `.`".to_string(),
+            ));
         }
+        if !int_part.is_empty() {
+            cleaned.push_str(&clean_digits(int_part, |c| c.is_ascii_digit()).map_err(invalid)?);
+        }
+        cleaned.push('.');
+        if !frac_part.is_empty() {
+            cleaned.push_str(&clean_digits(frac_part, |c| c.is_ascii_digit()).map_err(invalid)?);
+        }
+    } else {
+        // No dot: the mantissa is all integer digits. The lexer only produces
+        // such a `Float` token when an exponent follows (e.g. `1e10`).
+        cleaned.push_str(&clean_digits(mantissa, |c| c.is_ascii_digit()).map_err(invalid)?);
+    }
+
+    if let Some(exp) = exponent {
+        cleaned.push('e');
+        let digits = if let Some(rest) = exp.strip_prefix('-') {
+            cleaned.push('-');
+            rest
+        } else {
+            exp.strip_prefix('+').unwrap_or(exp)
+        };
+        cleaned.push_str(&clean_digits(digits, |c| c.is_ascii_digit()).map_err(invalid)?);
     }
 
     cleaned
@@ -234,6 +267,51 @@ mod test {
         assert!(parse_float_literal("1_.5").is_err());
         assert!(parse_float_literal("1._5").is_err());
         assert!(parse_float_literal("_1.5").is_err());
+    }
+
+    #[test]
+    fn float_leading_dot() {
+        assert_eq!(parse_float_literal(".5"), Ok(0.5));
+        assert_eq!(parse_float_literal(".25"), Ok(0.25));
+        assert_eq!(parse_float_literal(".000_5"), Ok(0.0005));
+    }
+
+    #[test]
+    fn float_scientific_notation() {
+        assert_eq!(parse_float_literal("1e10"), Ok(1e10));
+        assert_eq!(parse_float_literal("1E10"), Ok(1e10));
+        assert_eq!(parse_float_literal("1.5e-3"), Ok(1.5e-3));
+        assert_eq!(parse_float_literal("2E+8"), Ok(2e8));
+        assert_eq!(parse_float_literal("6.022e23"), Ok(6.022e23));
+    }
+
+    #[test]
+    fn float_scientific_with_leading_and_trailing_dot() {
+        assert_eq!(parse_float_literal(".5e3"), Ok(500.0));
+        assert_eq!(parse_float_literal("10.e3"), Ok(10000.0));
+    }
+
+    #[test]
+    fn float_scientific_with_underscores() {
+        assert_eq!(parse_float_literal("1_000.000_5e1_0"), Ok(1_000.000_5e10));
+    }
+
+    #[test]
+    fn float_bare_dot_is_rejected() {
+        // No digits on either side of the dot.
+        assert!(parse_float_literal(".").is_err());
+    }
+
+    #[test]
+    fn float_empty_exponent_is_rejected() {
+        assert!(parse_float_literal("1.5e").is_err());
+        assert!(parse_float_literal("1e+").is_err());
+    }
+
+    #[test]
+    fn float_misplaced_underscores_in_exponent_are_rejected() {
+        assert!(parse_float_literal("1e1_").is_err());
+        assert!(parse_float_literal("1e_1").is_err());
     }
 
     // ── strip_base_prefix ─────────────────────────────────────────────────────

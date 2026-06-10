@@ -110,6 +110,30 @@ fn integer_literal_bases() {
 }
 
 #[test]
+fn float_literal_forms() {
+    // Leading-dot, trailing-dot and scientific-notation floats, plus `_`
+    // separators, all evaluate as expected.
+    let src = r#"
+        print_float(.5)
+        print_float(10.)
+        print_float(1e3)
+        print_float(1.5e-3)
+        print_float(2E+8)
+        print_float(.5e3)
+        print_float(1_000.000_5)
+    "#;
+    assert_snapshot!(run_main(src), @"
+    0.5
+    10
+    1000
+    0.0015
+    200000000
+    500
+    1000.0005
+    ");
+}
+
+#[test]
 fn int_operators() {
     let src = r#"
         print_int(1 + 1)
