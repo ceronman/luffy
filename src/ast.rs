@@ -83,10 +83,6 @@ pub enum StmtKind {
         ty: TypeRef,
         initializer: Expr,
     },
-    Assignment {
-        target: Expr,
-        value: Expr,
-    },
     While {
         condition: Expr,
         body: Box<Block>,
@@ -119,6 +115,10 @@ pub enum ExprKind {
     Call {
         callee: Box<Expr>,
         args: Vec<Expr>,
+    },
+    Assignment {
+        target: Box<Expr>,
+        value: Box<Expr>,
     },
     If {
         condition: Box<Expr>,

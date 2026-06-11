@@ -213,14 +213,6 @@ impl Compiler {
                 let address = self.local_addr(name);
                 ins.push(ir::Instruction::LocalSet(address));
             }
-            ast::StmtKind::Assignment { target, value } => {
-                let ast::ExprKind::Variable { name } = &target.kind else {
-                    panic!("Invalid assignment target");
-                };
-                let adddress = self.local_addr(name);
-                self.expr(ins, value);
-                ins.push(ir::Instruction::LocalSet(adddress));
-            }
             ast::StmtKind::While { condition, body } => {
                 // Standard Wasm while loop:
                 //
@@ -365,6 +357,14 @@ impl Compiler {
                     self.expr(ins, arg);
                 }
                 ins.push(ir::Instruction::Call(address));
+            }
+            ast::ExprKind::Assignment { target, value } => {
+                let ast::ExprKind::Variable { name } = &target.kind else {
+                    panic!("Invalid assignment target");
+                };
+                let address = self.local_addr(name);
+                self.expr(ins, value);
+                ins.push(ir::Instruction::LocalSet(address));
             }
             ast::ExprKind::If {
                 condition,

@@ -2,7 +2,7 @@ mod numbers;
 #[cfg(test)]
 mod test;
 
-use crate::ast::StmtKind::{Assignment, ExprStmt};
+use crate::ast::StmtKind::ExprStmt;
 use crate::ast::{
     BinOp, BinOpKind, Block, BlockKind, Expr, ExprKind, Identifier, Item, ItemKind, LiteralKind,
     Module, Node, Param, Stmt, StmtKind, TypeRef, UnOp, UnOpKind,
@@ -349,7 +349,27 @@ impl<'src> Parser<'src> {
     }
 
     fn expression(&mut self) -> Result<Expr> {
-        self.expression_precedence(0)
+        // Assignment is an expression. It binds looser than every
+        // binary operator and is right-associative (`a = b = c` parses as
+        // `a = (b = c)`), so we parse a full operator-precedence expression for the
+        // target, then recurse on the right side when an `=` follows.
+        self.assignment()
+    }
+
+    fn assignment(&mut self) -> Result<Expr> {
+        let target = self.expression_precedence(0)?;
+        if self.eat(TokenKind::Equal) {
+            let value = self.assignment()?;
+            Ok(Expr {
+                node: self.node(target.node.span, value.node.span),
+                kind: ExprKind::Assignment {
+                    target: target.into(),
+                    value: value.into(),
+                },
+            })
+        } else {
+            Ok(target)
+        }
     }
 
     fn literal(&mut self) -> Result<Expr> {
@@ -403,22 +423,10 @@ impl<'src> Parser<'src> {
 
     fn expr_stmt(&mut self) -> Result<Stmt> {
         let expr = self.expression()?;
-
-        if self.eat(TokenKind::Equal) {
-            let value = self.expression()?;
-            Ok(Stmt {
-                node: self.node(expr.node.span, value.node.span),
-                kind: Assignment {
-                    target: expr,
-                    value,
-                },
-            })
-        } else {
-            Ok(Stmt {
-                node: self.node(expr.node.span, expr.node.span),
-                kind: ExprStmt { expr },
-            })
-        }
+        Ok(Stmt {
+            node: self.node(expr.node.span, expr.node.span),
+            kind: ExprStmt { expr },
+        })
     }
 
     fn declaration(&mut self) -> Result<Stmt> {

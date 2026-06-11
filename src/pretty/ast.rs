@@ -109,11 +109,6 @@ impl PrettyAst {
                     vec![ty, Self::expression(value)],
                 )
             }
-            StmtKind::Assignment { target, value } => {
-                let target = Self::expression(target);
-                let value = Self::expression(value);
-                Self::new("Assign", vec![target, value])
-            }
             StmtKind::While { condition, body } => Self::new(
                 "While",
                 vec![
@@ -139,6 +134,11 @@ impl PrettyAst {
                 let callee = Self::expression(callee);
                 let args = Self::new("Args", args.iter().map(Self::expression));
                 Self::new("Call", vec![callee, args])
+            }
+            ExprKind::Assignment { target, value } => {
+                let target = Self::expression(target);
+                let value = Self::expression(value);
+                Self::new("Assign", vec![target, value])
             }
             ExprKind::If {
                 condition,

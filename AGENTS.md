@@ -112,13 +112,12 @@ enum BlockKind {
 ```rust
 enum StmtKind {
     Declaration { name, ty: TypeRef, initializer: Expr },   // let x T = expr
-    Assignment  { target: Expr, value: Expr },              // x = expr
     While       { condition: Expr, body: Box<Block> },      // while cond { ... } / while cond: expr
     ExprStmt    { expr: Expr },
 }
 ```
 
-**`if` is implemented** as an `ExprKind` variant (see Expressions below), not a `StmtKind`. **`while` is implemented** as a `StmtKind` variant (see Loops below). **`return`** is an `ExprKind` variant (it is an expression of type `Never`, see below), not a `StmtKind`.
+**`if` is implemented** as an `ExprKind` variant (see Expressions below), not a `StmtKind`. **`while` is implemented** as a `StmtKind` variant (see Loops below). **`return`** is an `ExprKind` variant (it is an expression of type `Never`, see below), not a `StmtKind`. **Assignment** is also an `ExprKind` variant (an expression of type `Unit`, see below), not a `StmtKind`.
 
 ### Expressions
 
@@ -129,6 +128,7 @@ enum ExprKind {
     Unary    { op: UnOp, expr: Box<Expr> },                 // -x, not x
     Binary   { op: BinOp, left: Box<Expr>, right: Box<Expr> },
     Call     { callee: Box<Expr>, args: Vec<Expr> },
+    Assignment { target: Box<Expr>, value: Box<Expr> },     // x = expr   (always Unit)
     If       { condition: Box<Expr>, then_branch: Box<Block>, else_branch: Option<Box<Block>> },
     Break,                                                   // break    (Never; loops only)
     Continue,                                                // continue (Never; loops only)
@@ -187,6 +187,14 @@ This statement-vs-expression `else` rule matches Kotlin. The `Resolver` tracks t
 - In `if_expr`, when one branch is `Never` the whole `if` takes the *other* branch's type (the "join"), so `let x Int = if c { return 0 } else { 5 }` type-checks as `Int`.
 - A braces function body with a non-`Unit` return type must have block type `Never` (it ends in a `return`, or an `if`/`else` where all branches `return`) — otherwise it's a "Missing return statement" error. (Replaces the old "last statement is literally a `return`" check, so `if`/`else`-return bodies now type-check.)
 - In the compiler, an `if` whose node type is `Never` uses `BlockType::Empty` (no result), and `expr_stmt` does not emit a `drop` for `Never` (or `Unit`) values. `Never` is never passed to `Type::lower()`.
+
+#### Assignment
+
+`x = expr` is `ExprKind::Assignment { target, value }`, an **expression** whose type is always `Type::Unit` (like Rust). Because it is an expression, it may appear anywhere an expression is expected — in particular as the single expression of a colon body, so `while c: a = a + 1` works.
+
+- **Parsing** (`Parser::assignment`, reached from `Parser::expression`): assignment binds looser than every binary operator and is **right-associative**, so `a = b = c` parses as `a = (b = c)`. `assignment` parses a full operator-precedence expression for the target, then — if an `=` follows — recurses for the value. The `=` continues across a newline like a binary operator. `expr_stmt` no longer special-cases `=`; it just wraps an expression.
+- **Semantic** (`ExprKind::Assignment` arm in `Resolver::expr`): the target must be a `Variable` (otherwise "Invalid assignment target"); the value's type must unify with the variable's type. The assignment node's type is `Unit`.
+- **Compiler** (`ExprKind::Assignment` arm in `Compiler::expr`): emits the value then `LocalSet(addr)`, leaving nothing on the operand stack (consistent with `Unit`). When used in statement position, `expr_stmt` emits no `drop` because the type is `Unit`.
 
 ### Types
 

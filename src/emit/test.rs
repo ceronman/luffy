@@ -512,6 +512,41 @@ fn while_loop_with_inner_local() {
     assert_snapshot!(run_main(body), @"6");
 }
 
+#[test]
+fn grouped_assignment_value() {
+    // Parentheses in the assigned value change precedence: (1 + 2) * 3 = 9.
+    let body = r#"
+        let a Int = 0
+        a = (1 + 2) * 3
+        print_int(a)
+    "#;
+    assert_snapshot!(run_main(body), @"9");
+}
+
+#[test]
+fn while_colon_body_with_grouped_assignment() {
+    // A parenthesized assignment as a colon `while` body behaves like the
+    // bare one: parentheses are transparent.
+    let body = r#"
+        let a Int = 0
+        while a < 3: (a = a + 1)
+        print_int(a)
+    "#;
+    assert_snapshot!(run_main(body), @"3");
+}
+
+#[test]
+fn while_colon_body_with_assignment() {
+    // Assignment is an expression of type Unit, so `while c: a = a + 1` runs the
+    // assignment as the loop body and leaves nothing on the operand stack.
+    let body = r#"
+        let a Int = 0
+        while a < 3: a = a + 1
+        print_int(a)
+    "#;
+    assert_snapshot!(run_main(body), @"3");
+}
+
 // ── `break` / `continue` execution ────────────────────────────────────────────
 
 #[test]

@@ -242,16 +242,6 @@ impl Resolver {
                 self.declare_local(name, var_ty, func_id)?;
                 Type::Unit
             }
-            StmtKind::Assignment { target, value } => {
-                self.expr(target, func_id)?;
-                let ExprKind::Variable { name } = &target.kind else {
-                    return resolve_err(target.node.span, "Invalid assignment target");
-                };
-                let target_ty = self.lookup_ty(name)?;
-                let expr_ty = self.expr(value, func_id)?;
-                let _ = unify_ty(value.node.span, &target_ty, &expr_ty)?;
-                Type::Unit
-            }
             StmtKind::While { condition, body } => {
                 self.check_condition(condition, func_id, "while")?;
                 self.loop_depth += 1;
@@ -359,6 +349,16 @@ impl Resolver {
                     let _ = unify_ty(arg.node.span, param_ty, &arg_ty)?;
                 }
                 (*ret).clone()
+            }
+            ExprKind::Assignment { target, value } => {
+                self.expr(target, func_id)?;
+                let ExprKind::Variable { name } = &target.kind else {
+                    return resolve_err(target.node.span, "Invalid assignment target");
+                };
+                let target_ty = self.lookup_ty(name)?;
+                let expr_ty = self.expr(value, func_id)?;
+                let _ = unify_ty(value.node.span, &target_ty, &expr_ty)?;
+                Type::Unit
             }
             ExprKind::If {
                 condition,

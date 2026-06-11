@@ -528,6 +528,100 @@ fn assignment() {
 }
 
 #[test]
+fn assignment_is_right_associative() {
+    // Assignment is an expression that binds looser than everything and is
+    // right-associative, so `a = b = c` parses as `a = (b = c)`.
+    assert_snapshot!(parse_stmt("a = b = c"), @"
+    Assign
+    ├── Var [a]
+    └── Assign
+        ├── Var [b]
+        └── Var [c]
+    ");
+}
+
+#[test]
+fn assignment_as_while_colon_body() {
+    // Assignment is now an expression of type Unit, so it can be the single
+    // expression of a colon `while` body: `while c: a = a + 1`.
+    assert_snapshot!(parse_stmt("while true: a = a + 1"), @"
+    While
+    ├── Condition
+    │   └── Bool[true]
+    └── Body
+        └── ExprBlock
+            └── Assign
+                ├── Var [a]
+                └── Binary [+]
+                    ├── Var [a]
+                    └── Int[1]
+    ");
+}
+
+#[test]
+fn assignment_continues_across_newline() {
+    // Like a binary operator, `=` continues an expression across a newline, so
+    // the multi-line and single-line forms parse to the same AST.
+    let single = parse_stmt("a = a + 1");
+    let multi = parse_stmt("a =\n            a + 1");
+    assert_eq!(single, multi);
+}
+
+#[test]
+fn grouped_assignment_parses_as_assignment() {
+    // Grouping is transparent in the AST, but parentheses let an assignment
+    // expression appear anywhere — including wrapped in its own group.
+    assert_snapshot!(parse_stmt("(a = 1)"), @"
+    Assign
+    ├── Var [a]
+    └── Int[1]
+    ");
+}
+
+#[test]
+fn parenthesized_assignment_target_overrides_associativity() {
+    // Assignment is right-associative, so `a = b = c` groups as `a = (b = c)`.
+    // Parentheses on the left force the other grouping: the target of the outer
+    // assignment becomes the inner `a = b` assignment expression.
+    assert_snapshot!(parse_stmt("(a = b) = c"), @"
+    Assign
+    ├── Assign
+    │   ├── Var [a]
+    │   └── Var [b]
+    └── Var [c]
+    ");
+}
+
+#[test]
+fn assignment_value_grouping_changes_precedence() {
+    // Parentheses in the value change how the right-hand side associates:
+    // `a = (1 + 2) * 3` multiplies the sum, unlike `a = 1 + 2 * 3`.
+    assert_snapshot!(parse_stmt("a = (1 + 2) * 3"), @"
+    Assign
+    ├── Var [a]
+    └── Binary [*]
+        ├── Binary [+]
+        │   ├── Int[1]
+        │   └── Int[2]
+        └── Int[3]
+    ");
+}
+
+#[test]
+fn assignment_in_grouped_call_argument() {
+    // Because assignment is an expression, it can be a call argument, with or
+    // without an extra grouping around it.
+    assert_snapshot!(parse_stmt("f(a = 1)"), @"
+    Call
+    ├── Var [f]
+    └── Args
+        └── Assign
+            ├── Var [a]
+            └── Int[1]
+    ");
+}
+
+#[test]
 fn return_integer() {
     assert_snapshot!(parse_stmt("return 42"), @r"
     Return

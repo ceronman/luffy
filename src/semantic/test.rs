@@ -57,6 +57,33 @@ fn valid_variable_assignment() {
 }
 
 #[test]
+fn valid_assignment_in_while_colon_body() {
+    // Assignment is an expression of type Unit, so it type-checks as the single
+    // expression of a colon `while` body.
+    let src = r#"
+        fn main() {
+            let a Int = 0
+            while a < 3: a = a + 1
+        }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn valid_grouped_assignment() {
+    // Grouping is transparent, so a parenthesized assignment is still a valid
+    // `Unit` expression, and grouping in the value is fine too.
+    let src = r#"
+        fn main() {
+            let a Int = 0
+            (a = 1)
+            a = (a + 1) * 2
+        }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
 fn valid_integer_arithmetic() {
     assert_snapshot!(check("fn add(a Int, b Int) Int { return a + b }"), @"<no error>");
 }

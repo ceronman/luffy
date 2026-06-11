@@ -103,6 +103,12 @@ let x Int = 1
 x = 2
 ```
 
+Assignment is an **expression** whose value is always `Unit` (like Rust). Because it is an expression, it can be used anywhere an expression is expected — most usefully as the single expression of a colon body:
+
+```luffy
+while a > 0: a = a - 1
+```
+
 Variables are scoped to the block they are declared in. Declaring the same name twice in the same scope is an error.
 
 ---
