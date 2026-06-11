@@ -485,14 +485,22 @@ impl<'src> Parser<'src> {
         })
     }
 
-    // TODO: Allow chaining of if expressions if foo: 1 else if bar: 2 else 3
     fn if_expr(&mut self) -> Result<Expr> {
         let if_kw = self.expect(TokenKind::If)?;
         let condition = self.expression()?;
         let then_branch = self.block("`if` branch")?;
         let mut end = then_branch.node.span;
         let else_branch = if self.eat(TokenKind::Else) {
-            let block = self.block("`if` branch")?;
+            let block = if self.current.kind == TokenKind::If {
+                let expr = self.if_expr()?;
+                let span = expr.node.span;
+                Block {
+                    node: self.node(span, span),
+                    kind: BlockKind::Expr { expr },
+                }
+            } else {
+                self.block("`else` branch")?
+            };
             end = block.node.span;
             Some(block.into())
         } else {

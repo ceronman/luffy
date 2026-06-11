@@ -1819,6 +1819,57 @@ fn if_else_keyword_on_new_line() {
 }
 
 #[test]
+fn else_if_chaining_without_colon() {
+    let src = r#"
+        fn f(a Int) Int {
+            if a > 1 {
+                1
+            } else if a < 0 {
+                2
+            } else {
+                3
+            }
+        }
+    "#;
+    assert_snapshot!(parse_module(src), @"
+    Module
+    └── Function [f]
+        ├── Export [false]
+        ├── Parameters
+        │   └── Param
+        │       ├── Name
+        │       │   └── a
+        │       └── Type
+        │           └── Type [Int]
+        ├── Return
+        │   └── Type [Int]
+        └── Body
+            └── Block
+                └── If
+                    ├── Condition
+                    │   └── Binary [>]
+                    │       ├── Var [a]
+                    │       └── Int[1]
+                    ├── Then
+                    │   └── Block
+                    │       └── Int[1]
+                    └── Else
+                        └── ExprBlock
+                            └── If
+                                ├── Condition
+                                │   └── Binary [<]
+                                │       ├── Var [a]
+                                │       └── Int[0]
+                                ├── Then
+                                │   └── Block
+                                │       └── Int[2]
+                                └── Else
+                                    └── Block
+                                        └── Int[3]
+    ");
+}
+
+#[test]
 fn error_if_branch_missing_block_or_colon() {
     assert_snapshot!(parse_module("fn f(a Int) Int { return if a > 0 1 else 2 }"), @"
     fn f(a Int) Int { return if a > 0 1 else 2 }
