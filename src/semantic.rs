@@ -99,11 +99,13 @@ fn type_err<T: Debug>(span: Span, message: impl Into<String>) -> crate::parser::
     })
 }
 
-fn check_ty_match(span: Span, expected: &Type, actual: &Type) -> crate::parser::Result<()> {
-    // `Never` is compatible with any type: an expression of type `Never` never
-    // yields a value, so it can stand in wherever any type is expected.
-    if actual == expected || expected.is_never() || actual.is_never() {
-        Ok(())
+fn unify_ty(span: Span, expected: &Type, actual: &Type) -> crate::parser::Result<Type> {
+    if actual == expected {
+        Ok(actual.clone())
+    } else if actual.is_never() {
+        Ok(expected.clone())
+    } else if expected.is_never() {
+        Ok(actual.clone())
     } else {
         type_err(
             span,
@@ -200,7 +202,7 @@ impl Resolver {
             BlockKind::Expr { expr } => {
                 let ty = self.expr(expr, func_id)?;
                 let ret = self.function_ret_ty(block.node, func_id)?;
-                check_ty_match(expr.node.span, &ret, &ty)?;
+                unify_ty(expr.node.span, &ret, &ty)?;
             }
         }
         Ok(())
@@ -236,7 +238,7 @@ impl Resolver {
             } => {
                 let var_ty = self.ty_ref(ty)?;
                 let init_ty = self.expr(initializer, func_id)?;
-                check_ty_match(initializer.node.span, &var_ty, &init_ty)?;
+                unify_ty(initializer.node.span, &var_ty, &init_ty)?;
                 self.declare_local(name, var_ty, func_id)?;
                 Type::Unit
             }
@@ -247,7 +249,7 @@ impl Resolver {
                 };
                 let target_ty = self.lookup_ty(name)?;
                 let expr_ty = self.expr(value, func_id)?;
-                check_ty_match(value.node.span, &target_ty, &expr_ty)?;
+                let _ = unify_ty(value.node.span, &target_ty, &expr_ty)?;
                 Type::Unit
             }
             StmtKind::While { condition, body } => {
@@ -300,7 +302,7 @@ impl Resolver {
             ExprKind::Binary { op, left, right } => {
                 let left_ty = self.expr(left, func_id)?;
                 let right_ty = self.expr(right, func_id)?;
-                check_ty_match(right.node.span, &left_ty, &right_ty)?;
+                let result_ty = unify_ty(right.node.span, &left_ty, &right_ty)?;
                 match op.kind {
                     BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul | BinOpKind::Div => {
                         if !left_ty.is_numeric() {
@@ -309,7 +311,7 @@ impl Resolver {
                                 "Operator requires numeric type".to_string(),
                             );
                         }
-                        left_ty
+                        result_ty
                     }
 
                     BinOpKind::Mod => {
@@ -319,7 +321,7 @@ impl Resolver {
                                 format!("Modulo operator is not implemented for {left_ty}"),
                             );
                         }
-                        left_ty
+                        result_ty
                     }
 
                     BinOpKind::Eq | BinOpKind::Ne => Type::Bool,
@@ -354,7 +356,7 @@ impl Resolver {
                 };
                 for (arg, param_ty) in args.iter().zip(params.iter()) {
                     let arg_ty = self.expr(arg, func_id)?;
-                    check_ty_match(arg.node.span, param_ty, &arg_ty)?;
+                    let _ = unify_ty(arg.node.span, param_ty, &arg_ty)?;
                 }
                 (*ret).clone()
             }
@@ -385,7 +387,7 @@ impl Resolver {
             ExprKind::Return { expr: inner } => {
                 let inner_ty = self.expr(inner, func_id)?;
                 let ret = self.function_ret_ty(inner.node, func_id)?;
-                check_ty_match(inner.node.span, &ret, &inner_ty)?;
+                unify_ty(inner.node.span, &ret, &inner_ty)?;
                 Type::Never
             }
         };
@@ -407,9 +409,7 @@ impl Resolver {
         let ty = if let Some(else_branch) = else_branch {
             let else_ty = self.block_type(else_branch, func_id)?;
             // TODO: node shoud be tail of block for clarity
-            check_ty_match(else_branch.node.span, &then_ty, &else_ty)?;
-            // TODO: maybe make `check_ty_match` return a type?
-            if then_ty.is_never() { else_ty } else { then_ty }
+            unify_ty(else_branch.node.span, &then_ty, &else_ty)?
         } else if mandatory_else {
             return type_err(
                 node.span,

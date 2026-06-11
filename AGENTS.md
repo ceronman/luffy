@@ -17,8 +17,7 @@ cargo build
 cargo test
 ```
 
-Tests use [insta](https://insta.rs/) for snapshot testing. When adding a new test or changing compiler output, always leave
-the actual output empty and prompt the user to review the tests using `cargo insta test && cargo insta review`.
+Tests use [insta](https://insta.rs/) for snapshot testing.
 
 ---
 
@@ -184,7 +183,7 @@ This statement-vs-expression `else` rule matches Kotlin. The `Resolver` tracks t
 
 `Never` (`semantic::Type::Never`) is the bottom type — the type of expressions that never yield a value because control leaves them (`return`/`break`/`continue`). Key rules:
 
-- `check_ty_match` succeeds whenever **either** side is `Never` (it is compatible with every type).
+- `unify_ty` succeeds whenever **either** side is `Never` (it is compatible with every type).
 - In `if_expr`, when one branch is `Never` the whole `if` takes the *other* branch's type (the "join"), so `let x Int = if c { return 0 } else { 5 }` type-checks as `Int`.
 - A braces function body with a non-`Unit` return type must have block type `Never` (it ends in a `return`, or an `if`/`else` where all branches `return`) — otherwise it's a "Missing return statement" error. (Replaces the old "last statement is literally a `return`" check, so `if`/`else`-return bodies now type-check.)
 - In the compiler, an `if` whose node type is `Never` uses `BlockType::Empty` (no result), and `expr_stmt` does not emit a `drop` for `Never` (or `Unit`) values. `Never` is never passed to `Type::lower()`.
@@ -336,7 +335,7 @@ Each layer should be tested in isolation before moving to the next. The snapshot
 
 ## Test Conventions
 
-- **Snapshot tests** (`assert_snapshot!`): the expected output is inlined after `@`. When creating new tests, leave this empty. Never run `cargo insta accept` .
+- **Snapshot tests** (`assert_snapshot!`): the expected output is inlined after `@`. Never run `cargo insta accept` .
 - `semantic/test.rs`: tests named `valid_*` expect `"<no error>"`. Tests named `error_*` expect a formatted error string with source underlines.
 - `compiler/test.rs`: compiles to WAT (WebAssembly Text format) using `wasmprinter`. Check WAT output to verify correct instruction selection and local index assignment.
 - `emit/test.rs`: actually executes the Wasm binary using `wasmtime`. The host provides `js.print_int`, `js.print_float`, and `js.print_bool`. The helper `run_main(body)` wraps a snippet in import declarations + `export fn main() { … }` automatically.
