@@ -3,7 +3,7 @@ mod test;
 
 use crate::ast::{
     BinOpKind, Block, BlockKind, Expr, ExprKind, Identifier, ItemKind, LiteralKind, Module, Node,
-    NodeId, Param, Stmt, StmtKind, TypeRef, UnOpKind,
+    NodeId, Param, Stmt, StmtKind, TypeArgKind, TypeArgs, TypeRef, UnOpKind,
 };
 use crate::error::{CompilerError, ErrorKind};
 use crate::source::{Span, Symbol};
@@ -31,6 +31,7 @@ pub enum Type {
     Float,
     Bool,
     Never,
+    Array { ty: Rc<Type>, size: usize },
     Function { params: Rc<[Type]>, ret: Rc<Type> },
 }
 
@@ -60,6 +61,7 @@ impl Display for Type {
             Type::Float => write!(f, "Float"),
             Type::Bool => write!(f, "Bool"),
             Type::Never => write!(f, "Never"),
+            Type::Array { ty, size } => write!(f, "Array[{ty}, {size}]"),
             Type::Function { .. } => write!(f, "Function"), // TODO: improve
         }
     }
@@ -539,6 +541,28 @@ impl Resolver {
             "Bool" => Ok(Type::Bool),
             "Unit" => Ok(Type::Unit),
             "Never" => Ok(Type::Never),
+            "Array" => {
+                match type_ref.args.as_slice() {
+                    [
+                        TypeArgs {
+                            kind: TypeArgKind::Type(inner),
+                            ..
+                        },
+                        TypeArgs {
+                            kind: TypeArgKind::Number(size),
+                            ..
+                        },
+                    ] => {
+                        let inner = self.ty_ref(inner)?;
+                        let size = *size as usize;
+                        Ok(Type::Array {
+                            ty: Rc::from(inner),
+                            size,
+                        })
+                    }
+                    _ => resolve_err(type_ref.node.span, "Invalid array type"), // TODO: Improve error message
+                }
+            }
             _ => resolve_err(type_ref.node.span, "Unknown type"),
         }
     }

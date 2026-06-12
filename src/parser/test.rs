@@ -2207,3 +2207,138 @@ fn return_inside_if_branch() {
                 └── Int[1]
     ");
 }
+
+// ── Generic type-argument tests ───────────────────────────────────────────────
+
+#[test]
+fn type_arg_single_type() {
+    assert_snapshot!(parse_stmt("let x Vec[Int] = 0"), @"
+    VarDeclaration [x]
+    ├── Type
+    │   └── Type [Vec]
+    │       └── Args
+    │           └── Type [Int]
+    └── Int[0]
+    ");
+}
+
+#[test]
+fn type_arg_type_and_number() {
+    // The canonical case: a type argument followed by an integer argument.
+    assert_snapshot!(parse_stmt("let x Array[Int, 8] = 0"), @"
+    VarDeclaration [x]
+    ├── Type
+    │   └── Type [Array]
+    │       └── Args
+    │           ├── Type [Int]
+    │           └── Number [8]
+    └── Int[0]
+    ");
+}
+
+#[test]
+fn type_arg_multiple_types() {
+    assert_snapshot!(parse_stmt("let x Map[Int, Float] = 0"), @"
+    VarDeclaration [x]
+    ├── Type
+    │   └── Type [Map]
+    │       └── Args
+    │           ├── Type [Int]
+    │           └── Type [Float]
+    └── Int[0]
+    ");
+}
+
+#[test]
+fn type_arg_nested_generic() {
+    // A type argument can itself be a generic type with its own arguments.
+    assert_snapshot!(parse_stmt("let x Array[Array[Int, 4], 8] = 0"), @"
+    VarDeclaration [x]
+    ├── Type
+    │   └── Type [Array]
+    │       └── Args
+    │           ├── Type [Array]
+    │           │   └── Args
+    │           │       ├── Type [Int]
+    │           │       └── Number [4]
+    │           └── Number [8]
+    └── Int[0]
+    ");
+}
+
+#[test]
+fn type_arg_empty_brackets() {
+    // Empty brackets parse to a type with no arguments — identical in shape to a
+    // plain type reference.
+    assert_snapshot!(parse_stmt("let x Foo[] = 0"), @"
+    VarDeclaration [x]
+    ├── Type
+    │   └── Type [Foo]
+    └── Int[0]
+    ");
+}
+
+#[test]
+fn type_arg_in_parameter_position() {
+    assert_snapshot!(parse_module("fn f(x Array[Int, 8]) {}"), @"
+    Module
+    └── Function [f]
+        ├── Export [false]
+        ├── Parameters
+        │   └── Param
+        │       ├── Name
+        │       │   └── x
+        │       └── Type
+        │           └── Type [Array]
+        │               └── Args
+        │                   ├── Type [Int]
+        │                   └── Number [8]
+        ├── Return
+        │   └── Unit
+        └── Body
+            └── Block
+    ");
+}
+
+#[test]
+fn type_arg_in_return_position() {
+    assert_snapshot!(parse_module("import fn f() Array[Int, 8]"), @"
+    Module
+    └── Import [f]
+        ├── Parameters
+        └── Return
+            └── Type [Array]
+                └── Args
+                    ├── Type [Int]
+                    └── Number [8]
+    ");
+}
+
+// ── Generic type-argument error cases ─────────────────────────────────────────
+
+#[test]
+fn error_type_arg_unclosed_bracket() {
+    assert_snapshot!(parse_module("fn f(x Array[Int) {}"), @"
+    fn f(x Array[Int) {}
+                    ^ ─── Expected `]`, got `)`
+    ");
+}
+
+#[test]
+fn error_type_arg_invalid_token() {
+    // Only an integer or a type name is a valid argument; `+` is neither.
+    assert_snapshot!(parse_module("fn f(x Array[+]) {}"), @"
+    fn f(x Array[+]) {}
+                 ^ ─── Expected type argument, found `+` instead
+    ");
+}
+
+#[test]
+fn error_type_arg_trailing_comma() {
+    // TODO: Decide if trailing commas should be allowed in general
+    // A comma must be followed by another argument; a trailing comma is rejected.
+    assert_snapshot!(parse_module("fn f(x Array[Int,]) {}"), @"
+    fn f(x Array[Int,]) {}
+                     ^ ─── Expected type argument, found `]` instead
+    ");
+}

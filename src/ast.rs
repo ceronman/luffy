@@ -46,6 +46,19 @@ pub enum ItemKind {
 pub struct TypeRef {
     pub node: Node,
     pub name: Identifier,
+    pub args: Vec<TypeArgs>,
+}
+
+#[derive(Debug)]
+pub struct TypeArgs {
+    pub node: Node,
+    pub kind: TypeArgKind,
+}
+
+#[derive(Debug)]
+pub enum TypeArgKind {
+    Number(i64),
+    Type(TypeRef),
 }
 
 #[derive(Debug)]

@@ -5,7 +5,7 @@ mod test;
 use crate::ast::StmtKind::ExprStmt;
 use crate::ast::{
     BinOp, BinOpKind, Block, BlockKind, Expr, ExprKind, Identifier, Item, ItemKind, LiteralKind,
-    Module, Node, Param, Stmt, StmtKind, TypeRef, UnOp, UnOpKind,
+    Module, Node, Param, Stmt, StmtKind, TypeArgKind, TypeArgs, TypeRef, UnOp, UnOpKind,
 };
 use crate::error::{CompilerError, ErrorKind};
 use crate::lexer::{Lexer, Token, TokenKind};
@@ -148,10 +148,56 @@ impl<'src> Parser<'src> {
 
     fn type_ref(&mut self) -> Result<TypeRef> {
         let name = self.identifier(|t| format!("Expected type, found {} instead", t.kind))?;
+        let args = self.type_args()?;
+
         Ok(TypeRef {
             node: self.node(name.node.span, name.node.span),
             name,
+            args,
         })
+    }
+
+    fn type_args(&mut self) -> Result<Vec<TypeArgs>> {
+        let mut params = Vec::new();
+        if self.eat(TokenKind::LBracket) {
+            if self.current.kind != TokenKind::RBracket {
+                loop {
+                    let begin = self.current.span;
+                    let mut end = self.current.span;
+                    let kind = match self.current.kind {
+                        TokenKind::Int => {
+                            let value = self.integer()?;
+                            TypeArgKind::Number(value)
+                        }
+                        TokenKind::Identifier => {
+                            let ty_ref = self.type_ref()?;
+                            end = ty_ref.node.span;
+                            TypeArgKind::Type(ty_ref)
+                        }
+                        _ => {
+                            return error(
+                                self.current.span,
+                                format!(
+                                    "Expected type argument, found {} instead",
+                                    self.current.kind
+                                ),
+                            );
+                        }
+                    };
+                    params.push(TypeArgs {
+                        node: self.node(begin, end),
+                        kind,
+                    });
+
+                    if !self.eat(TokenKind::Comma) {
+                        break;
+                    }
+                }
+            }
+            self.expect(TokenKind::RBracket)?;
+        }
+
+        Ok(params)
     }
 
     fn param(&mut self) -> Result<Param> {
@@ -375,28 +421,26 @@ impl<'src> Parser<'src> {
     fn literal(&mut self) -> Result<Expr> {
         let token = self.current;
         let kind = match token.kind {
-            TokenKind::True => ExprKind::Literal {
-                kind: LiteralKind::Bool(true),
-            },
-            TokenKind::False => ExprKind::Literal {
-                kind: LiteralKind::Bool(false),
-            },
+            TokenKind::True => {
+                self.advance();
+                ExprKind::Literal {
+                    kind: LiteralKind::Bool(true),
+                }
+            }
+            TokenKind::False => {
+                self.advance();
+                ExprKind::Literal {
+                    kind: LiteralKind::Bool(false),
+                }
+            }
             TokenKind::Int => {
-                let text = self.slice(token.span);
-                let value = match numbers::parse_int_literal(text) {
-                    Ok(v) => v,
-                    Err(msg) => return error(token.span, msg),
-                };
+                let value = self.integer()?;
                 ExprKind::Literal {
                     kind: LiteralKind::Int(value),
                 }
             }
             TokenKind::Float => {
-                let text = self.slice(token.span);
-                let value = match numbers::parse_float_literal(text) {
-                    Ok(v) => v,
-                    Err(msg) => return error(token.span, msg),
-                };
+                let value = self.float()?;
                 ExprKind::Literal {
                     kind: LiteralKind::Float(value),
                 }
@@ -405,11 +449,30 @@ impl<'src> Parser<'src> {
                 return error(token.span, format!("Expected literal, got {}", token.kind));
             }
         };
-        self.advance();
         Ok(Expr {
             node: self.node(token.span, token.span),
             kind,
         })
+    }
+
+    fn integer(&mut self) -> Result<i64> {
+        let token = self.expect(TokenKind::Int)?;
+        let text = self.slice(token.span);
+        let value = match numbers::parse_int_literal(text) {
+            Ok(v) => v,
+            Err(msg) => return error(token.span, msg),
+        };
+        Ok(value)
+    }
+
+    fn float(&mut self) -> Result<f64> {
+        let token = self.expect(TokenKind::Float)?;
+        let text = self.slice(token.span);
+        let value = match numbers::parse_float_literal(text) {
+            Ok(v) => v,
+            Err(msg) => return error(token.span, msg),
+        };
+        Ok(value)
     }
 
     fn variable(&mut self) -> Result<Expr> {

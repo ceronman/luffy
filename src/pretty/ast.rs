@@ -1,6 +1,6 @@
 use crate::ast::{
     BinOpKind, Block, BlockKind, Expr, ExprKind, Identifier, Item, ItemKind, LiteralKind, Module,
-    Stmt, StmtKind, TypeRef, UnOpKind,
+    Stmt, StmtKind, TypeArgKind, TypeArgs, TypeRef, UnOpKind,
 };
 use std::fmt::Write;
 
@@ -173,7 +173,21 @@ impl PrettyAst {
     }
 
     fn ty(ty: &TypeRef) -> PrettyAst {
-        Self::new(format!("Type [{}]", ty.name.symbol), vec![])
+        // Only render an `Args` child when the type actually has arguments, so
+        // plain (non-generic) types keep their original `Type [Name]` leaf form.
+        let children = if ty.args.is_empty() {
+            vec![]
+        } else {
+            vec![Self::new("Args", ty.args.iter().map(Self::type_arg))]
+        };
+        Self::new(format!("Type [{}]", ty.name.symbol), children)
+    }
+
+    fn type_arg(arg: &TypeArgs) -> PrettyAst {
+        match &arg.kind {
+            TypeArgKind::Number(n) => Self::new(format!("Number [{n}]"), vec![]),
+            TypeArgKind::Type(ty) => Self::ty(ty),
+        }
     }
 
     fn write(
