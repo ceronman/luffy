@@ -5,7 +5,7 @@ mod test;
 use crate::ast::StmtKind::ExprStmt;
 use crate::ast::{
     BinOp, BinOpKind, Block, BlockKind, Expr, ExprKind, Identifier, Item, ItemKind, LiteralKind,
-    Module, Node, Param, Stmt, StmtKind, TypeArgKind, TypeArgs, TypeRef, UnOp, UnOpKind,
+    Module, Node, Param, Stmt, StmtKind, TypeRef, UnOp, UnOpKind,
 };
 use crate::error::{CompilerError, ErrorKind};
 use crate::lexer::{Lexer, Token, TokenKind};
@@ -148,56 +148,26 @@ impl<'src> Parser<'src> {
 
     fn type_ref(&mut self) -> Result<TypeRef> {
         let name = self.identifier(|t| format!("Expected type, found {} instead", t.kind))?;
-        let args = self.type_args()?;
-
-        Ok(TypeRef {
-            node: self.node(name.node.span, name.node.span),
-            name,
-            args,
-        })
-    }
-
-    fn type_args(&mut self) -> Result<Vec<TypeArgs>> {
-        let mut params = Vec::new();
+        let mut end = name.node.span;
+        let mut args = Vec::new();
         if self.eat(TokenKind::LBracket) {
             if self.current.kind != TokenKind::RBracket {
                 loop {
-                    let begin = self.current.span;
-                    let mut end = self.current.span;
-                    let kind = match self.current.kind {
-                        TokenKind::Int => {
-                            let value = self.integer()?;
-                            TypeArgKind::Number(value)
-                        }
-                        TokenKind::Identifier => {
-                            let ty_ref = self.type_ref()?;
-                            end = ty_ref.node.span;
-                            TypeArgKind::Type(ty_ref)
-                        }
-                        _ => {
-                            return error(
-                                self.current.span,
-                                format!(
-                                    "Expected type argument, found {} instead",
-                                    self.current.kind
-                                ),
-                            );
-                        }
-                    };
-                    params.push(TypeArgs {
-                        node: self.node(begin, end),
-                        kind,
-                    });
-
+                    args.push(self.type_ref()?);
                     if !self.eat(TokenKind::Comma) {
                         break;
                     }
                 }
             }
-            self.expect(TokenKind::RBracket)?;
+            let rbracket = self.expect(TokenKind::RBracket)?;
+            end = rbracket.span;
         }
 
-        Ok(params)
+        Ok(TypeRef {
+            node: self.node(name.node.span, end),
+            name,
+            args,
+        })
     }
 
     fn param(&mut self) -> Result<Param> {

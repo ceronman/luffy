@@ -801,37 +801,26 @@ fn error_missing_return_non_unit() {
 
 // ── `Array` type tests ────────────────────────────────────────────────────────
 //
-// `Array` is the first generic built-in type. It requires exactly two
-// arguments, in order: an element type and an integer size, e.g.
-// `Array[Int, 8]`. Any other shape (wrong count, wrong order, missing args) is
-// rejected during type resolution.
+// `Array` is the first generic built-in type. It requires exactly one
+// argument: the element type, e.g. `Array[Int]`. Any other shape (no args or
+// more than one) is rejected during type resolution.
 
 #[test]
 fn valid_array_type_in_param() {
-    // The canonical, well-formed array type: an element type and a size.
-    assert_snapshot!(check("fn f(x Array[Int, 8]) {}"), @"<no error>");
+    // The canonical, well-formed array type: a single element type.
+    assert_snapshot!(check("fn f(x Array[Int]) {}"), @"<no error>");
 }
 
 #[test]
 fn valid_array_of_floats() {
     // The element type can be any resolvable type, not just Int.
-    assert_snapshot!(check("fn f(x Array[Float, 16]) {}"), @"<no error>");
+    assert_snapshot!(check("fn f(x Array[Float]) {}"), @"<no error>");
 }
 
 #[test]
 fn valid_nested_array_type() {
     // The element type may itself be an array, since it is resolved recursively.
-    assert_snapshot!(check("fn f(x Array[Array[Int, 4], 8]) {}"), @"<no error>");
-}
-
-#[test]
-// TODO: improve the error message to explain the expected `Array[Type, Number]` shape.
-fn error_array_missing_size() {
-    // An element type but no size: only one argument, so the shape is invalid.
-    assert_snapshot!(check("fn f(x Array[Int]) {}"), @"
-    fn f(x Array[Int]) {}
-           ^^^^^ ─── Invalid array type
-    ");
+    assert_snapshot!(check("fn f(x Array[Array[Int]]) {}"), @"<no error>");
 }
 
 #[test]
@@ -844,20 +833,11 @@ fn error_array_no_arguments() {
 }
 
 #[test]
-fn error_array_arguments_swapped() {
-    // The arguments must be `[Type, Number]`; `[Number, Type]` is rejected.
-    assert_snapshot!(check("fn f(x Array[8, Int]) {}"), @"
-    fn f(x Array[8, Int]) {}
-           ^^^^^ ─── Invalid array type
-    ");
-}
-
-#[test]
 fn error_array_too_many_arguments() {
-    // Exactly two arguments are required; a third is invalid.
-    assert_snapshot!(check("fn f(x Array[Int, 8, 8]) {}"), @"
-    fn f(x Array[Int, 8, 8]) {}
-           ^^^^^ ─── Invalid array type
+    // Exactly one argument is required; a second is invalid.
+    assert_snapshot!(check("fn f(x Array[Int, Int]) {}"), @"
+    fn f(x Array[Int, Int]) {}
+           ^^^^^^^^^^^^^^^ ─── Invalid array type
     ");
 }
 
@@ -865,8 +845,8 @@ fn error_array_too_many_arguments() {
 fn error_array_unknown_element_type() {
     // The shape is valid, but the element type is resolved and must exist, so an
     // unknown element type is reported at the inner type reference.
-    assert_snapshot!(check("fn f(x Array[Foo, 8]) {}"), @"
-    fn f(x Array[Foo, 8]) {}
+    assert_snapshot!(check("fn f(x Array[Foo]) {}"), @"
+    fn f(x Array[Foo]) {}
                  ^^^ ─── Unknown type
     ");
 }

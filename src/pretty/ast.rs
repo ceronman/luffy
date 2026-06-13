@@ -1,6 +1,6 @@
 use crate::ast::{
     BinOpKind, Block, BlockKind, Expr, ExprKind, Identifier, Item, ItemKind, LiteralKind, Module,
-    Stmt, StmtKind, TypeArgKind, TypeArgs, TypeRef, UnOpKind,
+    Stmt, StmtKind, TypeRef, UnOpKind,
 };
 use std::fmt::Write;
 
@@ -178,16 +178,9 @@ impl PrettyAst {
         let children = if ty.args.is_empty() {
             vec![]
         } else {
-            vec![Self::new("Args", ty.args.iter().map(Self::type_arg))]
+            vec![Self::new("Args", ty.args.iter().map(Self::ty))]
         };
         Self::new(format!("Type [{}]", ty.name.symbol), children)
-    }
-
-    fn type_arg(arg: &TypeArgs) -> PrettyAst {
-        match &arg.kind {
-            TypeArgKind::Number(n) => Self::new(format!("Number [{n}]"), vec![]),
-            TypeArgKind::Type(ty) => Self::ty(ty),
-        }
     }
 
     fn write(

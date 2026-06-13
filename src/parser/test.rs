@@ -2255,20 +2255,6 @@ fn type_arg_single_type() {
 }
 
 #[test]
-fn type_arg_type_and_number() {
-    // The canonical case: a type argument followed by an integer argument.
-    assert_snapshot!(parse_stmt("let x Array[Int, 8] = 0"), @"
-    LetDeclaration [x]
-    ├── Type
-    │   └── Type [Array]
-    │       └── Args
-    │           ├── Type [Int]
-    │           └── Number [8]
-    └── Int[0]
-    ");
-}
-
-#[test]
 fn type_arg_multiple_types() {
     assert_snapshot!(parse_stmt("let x Map[Int, Float] = 0"), @"
     LetDeclaration [x]
@@ -2284,16 +2270,14 @@ fn type_arg_multiple_types() {
 #[test]
 fn type_arg_nested_generic() {
     // A type argument can itself be a generic type with its own arguments.
-    assert_snapshot!(parse_stmt("let x Array[Array[Int, 4], 8] = 0"), @"
+    assert_snapshot!(parse_stmt("let x Array[Array[Int]] = 0"), @"
     LetDeclaration [x]
     ├── Type
     │   └── Type [Array]
     │       └── Args
-    │           ├── Type [Array]
-    │           │   └── Args
-    │           │       ├── Type [Int]
-    │           │       └── Number [4]
-    │           └── Number [8]
+    │           └── Type [Array]
+    │               └── Args
+    │                   └── Type [Int]
     └── Int[0]
     ");
 }
@@ -2312,7 +2296,7 @@ fn type_arg_empty_brackets() {
 
 #[test]
 fn type_arg_in_parameter_position() {
-    assert_snapshot!(parse_module("fn f(x Array[Int, 8]) {}"), @"
+    assert_snapshot!(parse_module("fn f(x Array[Int]) {}"), @"
     Module
     └── Function [f]
         ├── Export [false]
@@ -2323,8 +2307,7 @@ fn type_arg_in_parameter_position() {
         │       └── Type
         │           └── Type [Array]
         │               └── Args
-        │                   ├── Type [Int]
-        │                   └── Number [8]
+        │                   └── Type [Int]
         ├── Return
         │   └── Unit
         └── Body
@@ -2334,15 +2317,14 @@ fn type_arg_in_parameter_position() {
 
 #[test]
 fn type_arg_in_return_position() {
-    assert_snapshot!(parse_module("import fn f() Array[Int, 8]"), @"
+    assert_snapshot!(parse_module("import fn f() Array[Int]"), @"
     Module
     └── Import [f]
         ├── Parameters
         └── Return
             └── Type [Array]
                 └── Args
-                    ├── Type [Int]
-                    └── Number [8]
+                    └── Type [Int]
     ");
 }
 
@@ -2358,10 +2340,10 @@ fn error_type_arg_unclosed_bracket() {
 
 #[test]
 fn error_type_arg_invalid_token() {
-    // Only an integer or a type name is a valid argument; `+` is neither.
+    // Only a type name is a valid argument; `+` is not.
     assert_snapshot!(parse_module("fn f(x Array[+]) {}"), @"
     fn f(x Array[+]) {}
-                 ^ ─── Expected type argument, found `+` instead
+                 ^ ─── Expected type, found `+` instead
     ");
 }
 
@@ -2371,6 +2353,6 @@ fn error_type_arg_trailing_comma() {
     // A comma must be followed by another argument; a trailing comma is rejected.
     assert_snapshot!(parse_module("fn f(x Array[Int,]) {}"), @"
     fn f(x Array[Int,]) {}
-                     ^ ─── Expected type argument, found `]` instead
+                     ^ ─── Expected type, found `]` instead
     ");
 }
