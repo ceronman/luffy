@@ -497,11 +497,17 @@ impl<'src> Parser<'src> {
         let name =
             self.identifier(|t| format!("Expected variable name, found {} instead", t.kind))?;
         let ty = self.type_ref()?;
-        self.expect(TokenKind::Equal)?;
-        let initializer = self.expression()?;
+        let mut end = name.node.span;
+        let initializer = if self.eat(TokenKind::Equal) {
+            let expr = self.expression()?;
+            end = expr.node.span;
+            Some(expr)
+        } else {
+            None
+        };
 
         Ok(Stmt {
-            node: self.node(let_kw.span, initializer.node.span),
+            node: self.node(let_kw.span, end),
             kind: StmtKind::Declaration {
                 name,
                 ty,

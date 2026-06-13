@@ -94,7 +94,7 @@ pub enum StmtKind {
     Declaration {
         name: Identifier,
         ty: TypeRef,
-        initializer: Expr,
+        initializer: Option<Expr>,
     },
     While {
         condition: Expr,

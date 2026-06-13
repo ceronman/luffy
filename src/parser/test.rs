@@ -478,7 +478,7 @@ fn call_with_expression_arg() {
 #[test]
 fn declaration_int() {
     assert_snapshot!(parse_stmt("let x Int = 42"), @"
-    VarDeclaration [x]
+    LetDeclaration [x]
     ├── Type
     │   └── Type [Int]
     └── Int[42]
@@ -488,7 +488,7 @@ fn declaration_int() {
 #[test]
 fn declaration_float() {
     assert_snapshot!(parse_stmt("let pi Float = 3.14"), @"
-    VarDeclaration [pi]
+    LetDeclaration [pi]
     ├── Type
     │   └── Type [Float]
     └── Float[3.14]
@@ -498,7 +498,7 @@ fn declaration_float() {
 #[test]
 fn declaration_bool() {
     assert_snapshot!(parse_stmt("let flag Bool = true"), @"
-    VarDeclaration [flag]
+    LetDeclaration [flag]
     ├── Type
     │   └── Type [Bool]
     └── Bool[true]
@@ -511,10 +511,42 @@ fn declaration_with_unknown_type_name_parses() {
     // as a type and captured verbatim; resolution (and rejection) happens later
     // during semantic analysis.
     assert_snapshot!(parse_stmt("let x Foo = 1"), @"
-    VarDeclaration [x]
+    LetDeclaration [x]
     ├── Type
     │   └── Type [Foo]
     └── Int[1]
+    ");
+}
+
+#[test]
+fn declaration_without_initializer() {
+    // The initializer is optional: `let name Type` declares a binding with no
+    // value. The pretty tree then has only a `Type` child and no expression.
+    assert_snapshot!(parse_stmt("let x Int"), @"
+    LetDeclaration [x]
+    └── Type
+        └── Type [Int]
+    ");
+}
+
+#[test]
+fn declaration_without_initializer_float() {
+    assert_snapshot!(parse_stmt("let pi Float"), @"
+    LetDeclaration [pi]
+    └── Type
+        └── Type [Float]
+    ");
+}
+
+#[test]
+fn declaration_without_initializer_generic_type() {
+    // Generic type arguments are still parsed when the initializer is omitted.
+    assert_snapshot!(parse_stmt("let xs Vec[Int]"), @"
+    LetDeclaration [xs]
+    └── Type
+        └── Type [Vec]
+            └── Args
+                └── Type [Int]
     ");
 }
 
@@ -1208,11 +1240,11 @@ fn statements_separated_by_newlines() {
         │   └── Unit
         └── Body
             └── Block
-                ├── VarDeclaration [x]
+                ├── LetDeclaration [x]
                 │   ├── Type
                 │   │   └── Type [Int]
                 │   └── Int[1]
-                ├── VarDeclaration [y]
+                ├── LetDeclaration [y]
                 │   ├── Type
                 │   │   └── Type [Int]
                 │   └── Int[2]
@@ -1235,11 +1267,11 @@ fn statements_separated_by_semicolons_on_one_line() {
         │   └── Unit
         └── Body
             └── Block
-                ├── VarDeclaration [x]
+                ├── LetDeclaration [x]
                 │   ├── Type
                 │   │   └── Type [Int]
                 │   └── Int[1]
-                ├── VarDeclaration [y]
+                ├── LetDeclaration [y]
                 │   ├── Type
                 │   │   └── Type [Int]
                 │   └── Int[2]
@@ -1265,11 +1297,11 @@ fn statements_mixing_newlines_and_semicolons() {
         │   └── Unit
         └── Body
             └── Block
-                ├── VarDeclaration [x]
+                ├── LetDeclaration [x]
                 │   ├── Type
                 │   │   └── Type [Int]
                 │   └── Int[1]
-                ├── VarDeclaration [y]
+                ├── LetDeclaration [y]
                 │   ├── Type
                 │   │   └── Type [Int]
                 │   └── Int[2]
@@ -1297,7 +1329,7 @@ fn trailing_and_repeated_semicolons_are_ignored() {
         │   └── Unit
         └── Body
             └── Block
-                ├── VarDeclaration [x]
+                ├── LetDeclaration [x]
                 │   ├── Type
                 │   │   └── Type [Int]
                 │   └── Int[1]
@@ -1328,7 +1360,7 @@ fn blank_lines_between_statements_are_ignored() {
         │   └── Unit
         └── Body
             └── Block
-                ├── VarDeclaration [x]
+                ├── LetDeclaration [x]
                 │   ├── Type
                 │   │   └── Type [Int]
                 │   └── Int[1]
@@ -2213,7 +2245,7 @@ fn return_inside_if_branch() {
 #[test]
 fn type_arg_single_type() {
     assert_snapshot!(parse_stmt("let x Vec[Int] = 0"), @"
-    VarDeclaration [x]
+    LetDeclaration [x]
     ├── Type
     │   └── Type [Vec]
     │       └── Args
@@ -2226,7 +2258,7 @@ fn type_arg_single_type() {
 fn type_arg_type_and_number() {
     // The canonical case: a type argument followed by an integer argument.
     assert_snapshot!(parse_stmt("let x Array[Int, 8] = 0"), @"
-    VarDeclaration [x]
+    LetDeclaration [x]
     ├── Type
     │   └── Type [Array]
     │       └── Args
@@ -2239,7 +2271,7 @@ fn type_arg_type_and_number() {
 #[test]
 fn type_arg_multiple_types() {
     assert_snapshot!(parse_stmt("let x Map[Int, Float] = 0"), @"
-    VarDeclaration [x]
+    LetDeclaration [x]
     ├── Type
     │   └── Type [Map]
     │       └── Args
@@ -2253,7 +2285,7 @@ fn type_arg_multiple_types() {
 fn type_arg_nested_generic() {
     // A type argument can itself be a generic type with its own arguments.
     assert_snapshot!(parse_stmt("let x Array[Array[Int, 4], 8] = 0"), @"
-    VarDeclaration [x]
+    LetDeclaration [x]
     ├── Type
     │   └── Type [Array]
     │       └── Args
@@ -2271,7 +2303,7 @@ fn type_arg_empty_brackets() {
     // Empty brackets parse to a type with no arguments — identical in shape to a
     // plain type reference.
     assert_snapshot!(parse_stmt("let x Foo[] = 0"), @"
-    VarDeclaration [x]
+    LetDeclaration [x]
     ├── Type
     │   └── Type [Foo]
     └── Int[0]

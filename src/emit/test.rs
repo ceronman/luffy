@@ -293,6 +293,24 @@ fn variables() {
 }
 
 #[test]
+fn declaration_without_initializer_then_assigned() {
+    // A binding declared without an initializer is assigned afterwards; the
+    // assigned value is what gets printed.
+    let src = r#"
+        let x Int
+        x = 5
+        print_int(x)
+        let y Float
+        y = 2.5
+        print_float(y)
+    "#;
+    assert_snapshot!(run_main(src), @"
+    5
+    2.5
+    ");
+}
+
+#[test]
 fn logical_operators() {
     // Full truth table for `and` and `or`.
     let src = r#"

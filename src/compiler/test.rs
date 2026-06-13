@@ -425,6 +425,53 @@ fn variable_reassignment() {
 }
 
 #[test]
+fn declaration_without_initializer_emits_no_store() {
+    // A `let` binding with no initializer still reserves a local slot, but emits
+    // no `local.set` — there is nothing to store.
+    let src = r#"
+        fn main() Int {
+            let x Int
+            return 0
+        }
+    "#;
+    assert_snapshot!(compile_to_wat(src), @"
+    (module
+      (type (;0;) (func (result i64)))
+      (func (;0;) (type 0) (result i64)
+        (local i64)
+        i64.const 0
+        return
+      )
+    )
+    ");
+}
+
+#[test]
+fn declaration_without_initializer_then_assigned() {
+    // The reserved slot is written by a later assignment, identical to the slot
+    // an initialised declaration would have used.
+    let src = r#"
+        fn main() Int {
+            let x Int
+            x = 7
+            return x
+        }
+    "#;
+    assert_snapshot!(compile_to_wat(src), @"
+    (module
+      (type (;0;) (func (result i64)))
+      (func (;0;) (type 0) (result i64)
+        (local i64)
+        i64.const 7
+        local.set 0
+        local.get 0
+        return
+      )
+    )
+    ");
+}
+
+#[test]
 fn params_and_locals_share_index_space() {
     // Parameters occupy the first N local slots; `let` variables follow.
     let src = r#"

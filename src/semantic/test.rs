@@ -57,6 +57,46 @@ fn valid_variable_assignment() {
 }
 
 #[test]
+fn valid_declaration_without_initializer() {
+    // The initializer is optional. A `let` with only a type annotation declares
+    // the binding and passes semantic analysis with no error.
+    let src = r#"
+        fn main() {
+            let x Int
+        }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn valid_declaration_without_initializer_then_assigned() {
+    // A binding declared without an initializer can be assigned afterwards and
+    // then used, as long as the assigned value matches the declared type.
+    let src = r#"
+        fn main() Int {
+            let x Int
+            x = 7
+            return x
+        }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn error_assignment_to_uninitialized_declaration_type_mismatch() {
+    // The declared type is still enforced for later assignments even when no
+    // initializer was given.
+    let src = r#"fn main() {
+        let x Int
+        x = true
+    }"#;
+    assert_snapshot!(check(src), @r"
+    x = true
+        ^^^^ ─── Type mismatch: expected 'Int', found 'Bool'
+    ");
+}
+
+#[test]
 fn valid_assignment_in_while_colon_body() {
     // Assignment is an expression of type Unit, so it type-checks as the single
     // expression of a colon `while` body.

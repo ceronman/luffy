@@ -239,8 +239,10 @@ impl Resolver {
                 initializer,
             } => {
                 let var_ty = self.ty_ref(ty)?;
-                let init_ty = self.expr(initializer, func_id)?;
-                unify_ty(initializer.node.span, &var_ty, &init_ty)?;
+                if let Some(initializer) = initializer {
+                    let init_ty = self.expr(initializer, func_id)?;
+                    unify_ty(initializer.node.span, &var_ty, &init_ty)?;
+                }
                 self.declare_local(name, var_ty, func_id)?;
                 Type::Unit
             }

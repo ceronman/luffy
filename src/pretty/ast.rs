@@ -101,13 +101,13 @@ impl PrettyAst {
             StmtKind::Declaration {
                 name,
                 ty,
-                initializer: value,
+                initializer,
             } => {
-                let ty = Self::new("Type", vec![Self::ty(ty)]);
-                Self::new(
-                    format!("VarDeclaration [{}]", name.symbol),
-                    vec![ty, Self::expression(value)],
-                )
+                let mut children = vec![Self::new("Type", vec![Self::ty(ty)])];
+                if let Some(value) = initializer {
+                    children.push(Self::expression(value));
+                }
+                Self::new(format!("LetDeclaration [{}]", name.symbol), children)
             }
             StmtKind::While { condition, body } => Self::new(
                 "While",

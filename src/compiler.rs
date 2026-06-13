@@ -205,13 +205,13 @@ impl Compiler {
                 self.expr_stmt(ins, expr);
             }
             ast::StmtKind::Declaration {
-                name,
-                initializer: value,
-                ..
+                name, initializer, ..
             } => {
-                self.expr(ins, value);
-                let address = self.local_addr(name);
-                ins.push(ir::Instruction::LocalSet(address));
+                if let Some(value) = initializer.as_ref() {
+                    self.expr(ins, value);
+                    let address = self.local_addr(name);
+                    ins.push(ir::Instruction::LocalSet(address));
+                }
             }
             ast::StmtKind::While { condition, body } => {
                 // Standard Wasm while loop:
