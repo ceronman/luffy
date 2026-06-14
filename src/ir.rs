@@ -12,18 +12,27 @@ pub struct Module {
 }
 
 pub enum Type {
-    Function(FuncType),
+    Function {
+        params: Vec<ValType>,
+        results: Vec<ValType>,
+    },
+    Array {
+        ty: StorageType,
+    },
 }
 
-pub struct FuncType {
-    pub params: Vec<ValType>,
-    pub results: Vec<ValType>,
-}
-
+#[derive(Copy, Clone)]
 pub enum ValType {
     I64,
     F64,
     I32,
+    Ref(TypeIdx),
+}
+
+pub enum StorageType {
+    I8,
+    I16,
+    Val(ValType),
 }
 
 pub struct Function {

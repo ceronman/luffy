@@ -2,15 +2,17 @@
 mod test;
 
 use crate::ast::ItemKind;
+use crate::ir::StorageType;
 use crate::semantic::{Declaration, DeclarationId, DeclarationKind, Semantics, Type};
 use crate::{ast, ir};
 use std::collections::{HashMap, VecDeque};
 
 #[derive(Default)]
 struct Compiler {
-    local_addresses: HashMap<DeclarationId, ir::LocalIdx>, // TODO: Unify both addresses?
-    func_addresses: HashMap<DeclarationId, FuncAddress>,
     semantics: Semantics,
+
+    local_addresses: HashMap<DeclarationId, LocalAddress>, // TODO: Unify both addresses?
+    func_addresses: HashMap<DeclarationId, FuncAddress>,
     loops: Loops,
 }
 
@@ -18,6 +20,12 @@ struct Compiler {
 struct FuncAddress {
     idx: ir::FuncIdx,
     ty_idx: ir::TypeIdx,
+}
+
+#[derive(Clone, Copy)]
+struct LocalAddress {
+    idx: ir::LocalIdx,
+    ty: ir::ValType,
 }
 
 /// Keeps track of control flow instructions
@@ -33,56 +41,9 @@ struct LoopFrame {
     continue_target: u32,
 }
 
-impl Loops {
-    fn reset(&mut self) {
-        self.depth = 0;
-        self.stack.clear();
-    }
-
-    fn enter_frame(&mut self) {
-        self.depth += 1;
-    }
-
-    fn exit_frame(&mut self) {
-        self.depth -= 1;
-    }
-
-    fn enter_loop(&mut self) {
-        let base = self.depth;
-        self.stack.push_back(LoopFrame {
-            break_target: base,
-            continue_target: base + 1,
-        });
-        self.depth += 2;
-    }
-
-    fn exit_loop(&mut self) {
-        self.stack.pop_back();
-        self.depth -= 2;
-    }
-
-    fn break_label(&self) -> ir::LabelIdx {
-        let target = self
-            .stack
-            .back()
-            .expect("`break` outside of a loop")
-            .break_target;
-        (self.depth - 1) - target
-    }
-
-    fn continue_label(&self) -> ir::LabelIdx {
-        let target = self
-            .stack
-            .back()
-            .expect("`continue` outside of a loop")
-            .continue_target;
-        (self.depth - 1) - target
-    }
-}
-
 impl Compiler {
     fn module(&mut self, module: &ast::Module) -> ir::Module {
-        let mut types = Vec::new(); // TODO: Avoid duplicated types
+        let mut types = Types::default();
         let mut imports = Vec::new();
         let mut functions = Vec::new();
         let mut exports = Vec::new();
@@ -90,9 +51,7 @@ impl Compiler {
         for declaration in &self.semantics.declarations {
             if let DeclarationKind::Import = &declaration.kind {
                 let func_idx = self.func_addresses.len() as ir::FuncIdx;
-                let ty = declaration.ty.lower_func_ty();
-                let ty_idx = types.len() as ir::TypeIdx;
-                types.push(ir::Type::Function(ty));
+                let ty_idx = types.get_or_create(&declaration.ty);
                 self.func_addresses.insert(
                     declaration.id,
                     FuncAddress {
@@ -109,14 +68,31 @@ impl Compiler {
             }
         }
 
+        let mut local_indices: HashMap<DeclarationId, ir::LocalIdx> = HashMap::new();
         for declaration in &self.semantics.declarations {
-            if let DeclarationKind::Function = &declaration.kind {
-                let idx = self.func_addresses.len() as ir::FuncIdx;
-                let ty = declaration.ty.lower_func_ty();
-                let ty_idx = types.len() as ir::TypeIdx;
-                types.push(ir::Type::Function(ty));
-                self.func_addresses
-                    .insert(declaration.id, FuncAddress { idx, ty_idx });
+            match &declaration.kind {
+                DeclarationKind::Function => {
+                    let idx = self.func_addresses.len() as ir::FuncIdx;
+                    let ty_idx = types.get_or_create(&declaration.ty);
+                    self.func_addresses
+                        .insert(declaration.id, FuncAddress { idx, ty_idx });
+                }
+                DeclarationKind::Local(fn_id) => {
+                    let ty = match &declaration.ty {
+                        Type::Array { .. } => {
+                            let ty_idx = types.get_or_create(&declaration.ty);
+                            ir::ValType::Ref(ty_idx)
+                        }
+                        _ => declaration.ty.lower_to_val_type(),
+                    };
+                    let idx = *local_indices
+                        .entry(*fn_id)
+                        .and_modify(|count| *count += 1)
+                        .or_insert(0);
+                    self.local_addresses
+                        .insert(declaration.id, LocalAddress { idx, ty });
+                }
+                _ => {}
             }
         }
 
@@ -143,7 +119,7 @@ impl Compiler {
             }
         }
         ir::Module {
-            types,
+            types: types.types,
             imports,
             functions,
             exports,
@@ -161,7 +137,7 @@ impl Compiler {
         let locals = self
             .function_locals(func_id)
             .skip(params.len())
-            .map(|d| d.ty.lower())
+            .map(|d| self.local_addresses[&d.id].ty)
             .collect::<Vec<ir::ValType>>();
         // Each function body starts with a clean control-frame state.
         self.loops.reset();
@@ -199,7 +175,7 @@ impl Compiler {
                 if let Some(value) = initializer.as_ref() {
                     self.expr(ins, value);
                     let address = self.local_addr(name);
-                    ins.push(ir::Instruction::LocalSet(address));
+                    ins.push(ir::Instruction::LocalSet(address.idx));
                 }
             }
             ast::StmtKind::While { condition, body } => {
@@ -258,7 +234,7 @@ impl Compiler {
             },
             ast::ExprKind::Variable { name } => {
                 let address = self.local_addr(name);
-                ins.push(ir::Instruction::LocalGet(address))
+                ins.push(ir::Instruction::LocalGet(address.idx))
             }
             ast::ExprKind::Unary { op, expr } => {
                 let ty = self.node_type(expr.node);
@@ -353,7 +329,7 @@ impl Compiler {
                 };
                 let address = self.local_addr(name);
                 self.expr(ins, value);
-                ins.push(ir::Instruction::LocalSet(address));
+                ins.push(ir::Instruction::LocalSet(address.idx));
             }
             ast::ExprKind::If {
                 condition,
@@ -367,7 +343,7 @@ impl Compiler {
                 let block_type = if ty.is_unit() || ty.is_never() {
                     ir::BlockType::Empty
                 } else {
-                    ir::BlockType::Result(ty.lower())
+                    ir::BlockType::Result(ty.lower_to_val_type())
                 };
                 ins.push(ir::Instruction::If(block_type));
                 self.loops.enter_frame();
@@ -421,20 +397,7 @@ impl Compiler {
         }
     }
 
-    fn calculate_addresses(&mut self) {
-        let mut local_indices: HashMap<DeclarationId, ir::LocalIdx> = HashMap::new();
-        for decl in &self.semantics.declarations {
-            if let DeclarationKind::Local(fn_id) = decl.kind {
-                let address = *local_indices
-                    .entry(fn_id)
-                    .and_modify(|count| *count += 1)
-                    .or_insert(0);
-                self.local_addresses.insert(decl.id, address);
-            };
-        }
-    }
-
-    fn local_addr(&self, identifier: &ast::Identifier) -> ir::LocalIdx {
+    fn local_addr(&self, identifier: &ast::Identifier) -> LocalAddress {
         let decl_id = self
             .semantics
             .uses
@@ -487,8 +450,74 @@ impl Compiler {
     }
 }
 
+#[derive(Default)]
+struct Types {
+    unique_types: HashMap<Type, ir::TypeIdx>,
+    types: Vec<ir::Type>,
+}
+
+impl Types {
+    fn get_or_create(&mut self, ty: &Type) -> ir::TypeIdx {
+        if let Some(idx) = self.unique_types.get(ty) {
+            return *idx;
+        }
+
+        let idx = self.types.len() as ir::TypeIdx;
+        self.types.push(ty.lower_to_type());
+        self.unique_types.insert(ty.clone(), idx);
+        idx
+    }
+}
+
+impl Loops {
+    fn reset(&mut self) {
+        self.depth = 0;
+        self.stack.clear();
+    }
+
+    fn enter_frame(&mut self) {
+        self.depth += 1;
+    }
+
+    fn exit_frame(&mut self) {
+        self.depth -= 1;
+    }
+
+    fn enter_loop(&mut self) {
+        let base = self.depth;
+        self.stack.push_back(LoopFrame {
+            break_target: base,
+            continue_target: base + 1,
+        });
+        self.depth += 2;
+    }
+
+    fn exit_loop(&mut self) {
+        self.stack.pop_back();
+        self.depth -= 2;
+    }
+
+    fn break_label(&self) -> ir::LabelIdx {
+        let target = self
+            .stack
+            .back()
+            .expect("`break` outside of a loop")
+            .break_target;
+        (self.depth - 1) - target
+    }
+
+    fn continue_label(&self) -> ir::LabelIdx {
+        let target = self
+            .stack
+            .back()
+            .expect("`continue` outside of a loop")
+            .continue_target;
+        (self.depth - 1) - target
+    }
+}
+
 impl Type {
-    fn lower(&self) -> ir::ValType {
+    fn lower_to_val_type(&self) -> ir::ValType {
         match self {
             Type::Int => ir::ValType::I64,
             Type::Float => ir::ValType::F64,
@@ -497,18 +526,25 @@ impl Type {
         }
     }
 
-    fn lower_func_ty(&self) -> ir::FuncType {
-        let Type::Function { params, ret } = self else {
-            panic!("Function is not of type function")
-        };
-
-        let params = params.iter().map(|p| p.lower()).collect::<Vec<_>>();
-        let results = if let Type::Unit = ret.as_ref() {
-            vec![]
-        } else {
-            vec![ret.lower()]
-        };
-        ir::FuncType { params, results }
+    fn lower_to_type(&self) -> ir::Type {
+        match self {
+            Type::Function { params, ret } => {
+                let params = params
+                    .iter()
+                    .map(|p| p.lower_to_val_type())
+                    .collect::<Vec<_>>();
+                let results = if let Type::Unit = ret.as_ref() {
+                    vec![]
+                } else {
+                    vec![ret.lower_to_val_type()]
+                };
+                ir::Type::Function { params, results }
+            }
+            Type::Array { ty } => ir::Type::Array {
+                ty: StorageType::Val(ty.lower_to_val_type()),
+            },
+            _ => panic!("Type is not part of types section"),
+        }
     }
 }
 
@@ -517,6 +553,5 @@ pub fn compile(module: &ast::Module, semantics: Semantics) -> ir::Module {
         semantics,
         ..Default::default()
     };
-    compiler.calculate_addresses();
     compiler.module(module)
 }

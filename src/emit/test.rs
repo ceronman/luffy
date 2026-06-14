@@ -5,7 +5,10 @@ pub fn run_to_stdout(binary: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error
     use std::io::Write;
     use std::sync::{Arc, Mutex};
 
-    let engine = wasmtime::Engine::default();
+    let mut config = wasmtime::Config::new();
+    config.wasm_gc(true);
+    config.wasm_function_references(true);
+    let engine = wasmtime::Engine::new(&config)?;
     let module = wasmtime::Module::from_binary(&engine, binary)?;
     let mut store = wasmtime::Store::new(&engine, ());
     let mut linker = wasmtime::Linker::new(&engine);

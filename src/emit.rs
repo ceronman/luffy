@@ -4,7 +4,7 @@ mod test;
 use crate::ir;
 use wasm_encoder::{
     BlockType, CodeSection, EntityType, ExportKind, ExportSection, Function, FunctionSection,
-    ImportSection, Instruction, Module, TypeSection, ValType,
+    HeapType, ImportSection, Instruction, Module, RefType, StorageType, TypeSection, ValType,
 };
 
 pub fn emit(module: ir::Module) -> Vec<u8> {
@@ -13,12 +13,13 @@ pub fn emit(module: ir::Module) -> Vec<u8> {
     let mut types = TypeSection::new();
     for ty in &module.types {
         match ty {
-            ir::Type::Function(f) => {
+            ir::Type::Function { params, results } => {
                 types.ty().function(
-                    f.params.iter().map(ir::ValType::encode),
-                    f.results.iter().map(ir::ValType::encode),
+                    params.iter().map(ir::ValType::encode),
+                    results.iter().map(ir::ValType::encode),
                 );
             }
+            ir::Type::Array { ty } => types.ty().array(&ty.encode(), true),
         }
     }
     bin_module.section(&types);
@@ -66,6 +67,20 @@ impl ir::ValType {
             ir::ValType::I64 => ValType::I64,
             ir::ValType::F64 => ValType::F64,
             ir::ValType::I32 => ValType::I32,
+            ir::ValType::Ref(idx) => ValType::Ref(RefType {
+                nullable: true,
+                heap_type: HeapType::Concrete(*idx),
+            }),
+        }
+    }
+}
+
+impl ir::StorageType {
+    fn encode(&self) -> StorageType {
+        match self {
+            ir::StorageType::I8 => StorageType::I8,
+            ir::StorageType::I16 => StorageType::I16,
+            ir::StorageType::Val(v) => StorageType::Val(v.encode()),
         }
     }
 }
@@ -129,7 +144,10 @@ impl ir::Instruction {
 }
 
 pub fn run(binary: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
-    let engine = wasmtime::Engine::default();
+    let mut config = wasmtime::Config::new();
+    config.wasm_gc(true);
+    config.wasm_function_references(true);
+    let engine = wasmtime::Engine::new(&config)?;
     let module = wasmtime::Module::from_binary(&engine, binary)?;
     let mut store = wasmtime::Store::new(&engine, ());
     let mut linker = wasmtime::Linker::new(&engine);

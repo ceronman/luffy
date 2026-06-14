@@ -26,7 +26,7 @@ pub enum DeclarationKind {
     Import,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Type {
     Unit,
     Int,

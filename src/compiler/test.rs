@@ -595,15 +595,14 @@ fn imported_function_vs_defined_function_index() {
     assert_snapshot!(compile_to_wat(src), @r#"
     (module
       (type (;0;) (func (param i64)))
-      (type (;1;) (func (param i64)))
-      (type (;2;) (func))
+      (type (;1;) (func))
       (import "js" "print_int" (func (;0;) (type 0)))
       (export "main" (func 2))
-      (func (;1;) (type 1) (param i64)
+      (func (;1;) (type 0) (param i64)
         i64.const 1
         call 0
       )
-      (func (;2;) (type 2)
+      (func (;2;) (type 1)
         i64.const 0
         call 1
       )
@@ -647,8 +646,7 @@ fn logical_operators() {
     assert_snapshot!(compile_to_wat(src), @"
     (module
       (type (;0;) (func (param i32 i32) (result i32)))
-      (type (;1;) (func (param i32 i32) (result i32)))
-      (type (;2;) (func (param i32) (result i32)))
+      (type (;1;) (func (param i32) (result i32)))
       (func (;0;) (type 0) (param i32 i32) (result i32)
         local.get 0
         if (result i32) ;; label = @1
@@ -658,7 +656,7 @@ fn logical_operators() {
         end
         return
       )
-      (func (;1;) (type 1) (param i32 i32) (result i32)
+      (func (;1;) (type 0) (param i32 i32) (result i32)
         local.get 0
         if (result i32) ;; label = @1
           i32.const 1
@@ -667,7 +665,7 @@ fn logical_operators() {
         end
         return
       )
-      (func (;2;) (type 2) (param i32) (result i32)
+      (func (;2;) (type 1) (param i32) (result i32)
         local.get 0
         i32.eqz
         return

@@ -11,12 +11,8 @@ pub mod source;
 
 fn main() {
     let code = r#"
-        fn foo(a Int) {
-            print_int(1)
-        }
-        import fn print_int(a Int)
         export fn main() {
-            foo(0)
+            let foo Array[Int]
         }
     "#;
 
@@ -41,6 +37,7 @@ fn main() {
 
     let module = compiler::compile(&module, semantics);
     let wasm = emit::emit(module);
+    std::fs::write("output.bin", &wasm).unwrap();
     let wat = wasmprinter::print_bytes(&wasm).expect("Failed to print Wasm binary");
     println!("Running:\n{}", wat);
     emit::run(&wasm).unwrap();

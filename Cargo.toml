@@ -4,8 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-wasm-encoder = "0.251.0"
-wasmprinter = "0.251.0"
+wasm-encoder = "0.252.0"
+wasmprinter = "0.252.0"
 wasmtime = "45.0.0"
 
 [dev-dependencies]
