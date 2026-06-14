@@ -15,13 +15,15 @@ pub type DeclarationId = usize;
 
 pub struct Declaration {
     pub id: DeclarationId,
+    pub name: Symbol,
     pub ty: Type,
     pub kind: DeclarationKind,
 }
 
 pub enum DeclarationKind {
-    Local(DeclarationId),
+    Local(DeclarationId), // TODO: Make named field
     Function,
+    Import,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -145,7 +147,11 @@ impl Resolver {
                         params: Rc::from(params),
                         ret: Rc::from(ret),
                     };
-                    self.declare(name, ty, DeclarationKind::Function)?;
+                    let kind = match &item.kind {
+                        ItemKind::Function { .. } => DeclarationKind::Function,
+                        ItemKind::Import { .. } => DeclarationKind::Import,
+                    };
+                    self.declare(name, ty, kind)?;
                 }
             }
         }
@@ -484,6 +490,7 @@ impl Resolver {
         let decl_id = self.semantics.declarations.len();
         let decl = Declaration {
             id: decl_id,
+            name: name.clone(),
             ty,
             kind,
         };

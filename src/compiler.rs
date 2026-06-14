@@ -8,20 +8,23 @@ use std::collections::{HashMap, VecDeque};
 
 #[derive(Default)]
 struct Compiler {
-    local_addresses: HashMap<DeclarationId, ir::LocalIdx>,
-    func_addresses: HashMap<DeclarationId, ir::FuncIdx>,
+    local_addresses: HashMap<DeclarationId, ir::LocalIdx>, // TODO: Unify both addresses?
+    func_addresses: HashMap<DeclarationId, FuncAddress>,
     semantics: Semantics,
     loops: Loops,
 }
 
-/// Tracks the open Wasm control frames while lowering a function body so that
-/// `break`/`continue` can compute their relative branch label indices.
+#[derive(Clone, Copy)]
+struct FuncAddress {
+    idx: ir::FuncIdx,
+    ty_idx: ir::TypeIdx,
+}
+
+/// Keeps track of control flow instructions
 #[derive(Default)]
 struct Loops {
     /// Number of structured control frames (`block`/`loop`/`if`) currently open.
     depth: u32,
-    /// Enclosing loops. The back of the deque is the innermost loop — the target
-    /// of `break`/`continue`.
     stack: VecDeque<LoopFrame>,
 }
 
@@ -36,7 +39,6 @@ impl Loops {
         self.stack.clear();
     }
 
-    /// Opens a non-loop control frame (an `if`, or an `and`/`or` short-circuit block).
     fn enter_frame(&mut self) {
         self.depth += 1;
     }
@@ -45,12 +47,8 @@ impl Loops {
         self.depth -= 1;
     }
 
-    /// Opens a loop's outer `block` and inner `loop` frames and records the loop
-    /// as the current `break`/`continue` target.
     fn enter_loop(&mut self) {
         let base = self.depth;
-        // `break` exits the outer `block` (frame `base`); `continue` jumps to the
-        // inner `loop` (frame `base + 1`).
         self.stack.push_back(LoopFrame {
             break_target: base,
             continue_target: base + 1,
@@ -63,7 +61,6 @@ impl Loops {
         self.depth -= 2;
     }
 
-    /// Relative label index for `break` (branches out of the innermost loop's `block`).
     fn break_label(&self) -> ir::LabelIdx {
         let target = self
             .stack
@@ -73,7 +70,6 @@ impl Loops {
         (self.depth - 1) - target
     }
 
-    /// Relative label index for `continue` (branches back to the innermost `loop`).
     fn continue_label(&self) -> ir::LabelIdx {
         let target = self
             .stack
@@ -86,35 +82,41 @@ impl Loops {
 
 impl Compiler {
     fn module(&mut self, module: &ast::Module) -> ir::Module {
-        let mut types = Vec::new();
+        let mut types = Vec::new(); // TODO: Avoid duplicated types
         let mut imports = Vec::new();
         let mut functions = Vec::new();
         let mut exports = Vec::new();
 
-        // TODO: Avoid duplicated types
-        // TODO: Make imports a different kind of declaration
-        for item in &module.items {
-            if let ItemKind::Import { name, .. } = &item.kind {
-                let decl_id = self.declaration_id(name);
+        for declaration in &self.semantics.declarations {
+            if let DeclarationKind::Import = &declaration.kind {
                 let func_idx = self.func_addresses.len() as ir::FuncIdx;
-                self.func_addresses.insert(decl_id, func_idx);
-                let ty = self.func_type(name);
+                let ty = declaration.ty.lower_func_ty();
                 let ty_idx = types.len() as ir::TypeIdx;
                 types.push(ir::Type::Function(ty));
+                self.func_addresses.insert(
+                    declaration.id,
+                    FuncAddress {
+                        idx: func_idx,
+                        ty_idx,
+                    },
+                );
                 let import = ir::Import {
                     module: "js".to_string(),
-                    name: name.symbol.clone(),
+                    name: declaration.name.clone(),
                     func_type: ty_idx,
                 };
                 imports.push(import);
             }
         }
 
-        for item in &module.items {
-            if let ItemKind::Function { name, .. } = &item.kind {
-                let decl_id = self.declaration_id(name);
-                let func_idx = self.func_addresses.len() as ir::FuncIdx;
-                self.func_addresses.insert(decl_id, func_idx);
+        for declaration in &self.semantics.declarations {
+            if let DeclarationKind::Function = &declaration.kind {
+                let idx = self.func_addresses.len() as ir::FuncIdx;
+                let ty = declaration.ty.lower_func_ty();
+                let ty_idx = types.len() as ir::TypeIdx;
+                types.push(ir::Type::Function(ty));
+                self.func_addresses
+                    .insert(declaration.id, FuncAddress { idx, ty_idx });
             }
         }
 
@@ -128,17 +130,14 @@ impl Compiler {
             } = &item.kind
             {
                 let decl_id = self.declaration_id(name);
-                let func_idx = *self
+                let addr = *self
                     .func_addresses
                     .get(&decl_id)
                     .expect("function declaration not found");
-                let ty = self.func_type(name);
-                let ty_idx = types.len() as ir::TypeIdx;
-                types.push(ir::Type::Function(ty));
-                let f = self.function(ty_idx, name, params, body);
+                let f = self.function(addr.ty_idx, name, params, body);
                 functions.push(f);
                 if *export {
-                    let export = self.func_export(func_idx, name);
+                    let export = self.func_export(addr.idx, name);
                     exports.push(export);
                 }
             }
@@ -149,20 +148,6 @@ impl Compiler {
             functions,
             exports,
         }
-    }
-
-    fn func_type(&self, name: &ast::Identifier) -> ir::FuncType {
-        let Type::Function { params, ret } = self.declaration_type(name) else {
-            panic!("Function is not of type function")
-        };
-
-        let params = params.iter().map(|p| p.lower()).collect::<Vec<_>>();
-        let results = if let Type::Unit = ret.as_ref() {
-            vec![]
-        } else {
-            vec![ret.lower()]
-        };
-        ir::FuncType { params, results }
     }
 
     fn function(
@@ -360,7 +345,7 @@ impl Compiler {
                 for arg in args {
                     self.expr(ins, arg);
                 }
-                ins.push(ir::Instruction::Call(address));
+                ins.push(ir::Instruction::Call(address.idx));
             }
             ast::ExprKind::Assignment { target, value } => {
                 let ast::ExprKind::Variable { name } = &target.kind else {
@@ -462,8 +447,7 @@ impl Compiler {
             .expect("Address not found for declaration")
     }
 
-    // TODO: Unify
-    fn func_addr(&self, identifier: &ast::Identifier) -> ir::FuncIdx {
+    fn func_addr(&self, identifier: &ast::Identifier) -> FuncAddress {
         let decl_id = self
             .semantics
             .uses
@@ -482,12 +466,6 @@ impl Compiler {
             .get(&ident.node.id)
             .copied()
             .expect("Declaration not found")
-    }
-
-    fn declaration_type(&self, ident: &ast::Identifier) -> Type {
-        let decl_id = self.declaration_id(ident);
-        let decl = &self.semantics.declarations[decl_id];
-        decl.ty.clone()
     }
 
     fn node_type(&self, node: ast::Node) -> Type {
@@ -517,6 +495,20 @@ impl Type {
             Type::Bool => ir::ValType::I32,
             _ => todo!(),
         }
+    }
+
+    fn lower_func_ty(&self) -> ir::FuncType {
+        let Type::Function { params, ret } = self else {
+            panic!("Function is not of type function")
+        };
+
+        let params = params.iter().map(|p| p.lower()).collect::<Vec<_>>();
+        let results = if let Type::Unit = ret.as_ref() {
+            vec![]
+        } else {
+            vec![ret.lower()]
+        };
+        ir::FuncType { params, results }
     }
 }
 
