@@ -11,14 +11,12 @@ pub mod source;
 
 fn main() {
     let code = r#"
-        import fn print_int(a Int)
-        fn foo(a Int, b Int) Int {
-            print_int(256)
-            return 1
+        fn foo(a Int) {
+            print_int(1)
         }
+        import fn print_int(a Int)
         export fn main() {
-            foo(1, 2, 3, 4)
-            print_int(64)
+            foo(0)
         }
     "#;
 

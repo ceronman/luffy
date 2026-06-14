@@ -91,29 +91,33 @@ impl Compiler {
         let mut functions = Vec::new();
         let mut exports = Vec::new();
 
+        // TODO: Avoid duplicated types
+        // TODO: Make imports a different kind of declaration
         for item in &module.items {
-            match &item.kind {
-                ItemKind::Import { name, .. } => {
-                    let decl_id = self.declaration_id(name);
-                    let func_idx = self.func_addresses.len() as ir::FuncIdx;
-                    self.func_addresses.insert(decl_id, func_idx);
-                    let ty = self.func_type(name);
-                    let ty_idx = types.len() as ir::TypeIdx;
-                    types.push(ir::Type::Function(ty));
-                    let import = ir::Import {
-                        module: "js".to_string(),
-                        name: name.symbol.clone(),
-                        func_type: ty_idx,
-                    };
-                    imports.push(import);
-                }
-                ItemKind::Function { name, .. } => {
-                    let decl_id = self.declaration_id(name);
-                    let func_idx = self.func_addresses.len() as ir::FuncIdx;
-                    self.func_addresses.insert(decl_id, func_idx);
-                }
+            if let ItemKind::Import { name, .. } = &item.kind {
+                let decl_id = self.declaration_id(name);
+                let func_idx = self.func_addresses.len() as ir::FuncIdx;
+                self.func_addresses.insert(decl_id, func_idx);
+                let ty = self.func_type(name);
+                let ty_idx = types.len() as ir::TypeIdx;
+                types.push(ir::Type::Function(ty));
+                let import = ir::Import {
+                    module: "js".to_string(),
+                    name: name.symbol.clone(),
+                    func_type: ty_idx,
+                };
+                imports.push(import);
             }
         }
+
+        for item in &module.items {
+            if let ItemKind::Function { name, .. } = &item.kind {
+                let decl_id = self.declaration_id(name);
+                let func_idx = self.func_addresses.len() as ir::FuncIdx;
+                self.func_addresses.insert(decl_id, func_idx);
+            }
+        }
+
         for item in &module.items {
             if let ItemKind::Function {
                 export,

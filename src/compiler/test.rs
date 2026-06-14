@@ -582,6 +582,36 @@ fn imported_function() {
 }
 
 #[test]
+fn imported_function_vs_defined_function_index() {
+    let src = r#"
+        fn foo(a Int) {
+            print_int(1)
+        }
+        import fn print_int(a Int)
+        export fn main() {
+            foo(0)
+        }
+    "#;
+    assert_snapshot!(compile_to_wat(src), @r#"
+    (module
+      (type (;0;) (func (param i64)))
+      (type (;1;) (func (param i64)))
+      (type (;2;) (func))
+      (import "js" "print_int" (func (;0;) (type 0)))
+      (export "main" (func 2))
+      (func (;1;) (type 1) (param i64)
+        i64.const 1
+        call 0
+      )
+      (func (;2;) (type 2)
+        i64.const 0
+        call 1
+      )
+    )
+    "#);
+}
+
+#[test]
 fn import_and_call() {
     // Imports are assigned func indices before defined functions, so the
     // import gets index 0 and the call instruction references it.

@@ -388,6 +388,20 @@ fn function_calls() {
 }
 
 #[test]
+fn imported_function_vs_defined_function_index() {
+    let src = r#"
+        fn foo(a Int) {
+            print_int(1)
+        }
+        import fn print_int(a Int)
+        export fn main() {
+            foo(0)
+        }
+    "#;
+    assert_snapshot!(compile_and_run(src), @"1");
+}
+
+#[test]
 fn expression_statements_drop_the_stack() {
     // compile_and_run is used here (instead of run_main) so that helper
     // functions can be defined alongside main.
