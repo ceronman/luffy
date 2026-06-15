@@ -2356,3 +2356,104 @@ fn error_type_arg_trailing_comma() {
                      ^ ─── Expected type, found `]` instead
     ");
 }
+
+// ── Array indexing tests ──────────────────────────────────────────────────────
+
+#[test]
+fn index_basic() {
+    assert_snapshot!(parse_expr("a[0]"), @r"
+    Index
+    ├── Var [a]
+    └── Int[0]
+    ");
+}
+
+#[test]
+fn index_with_expression_index() {
+    // The index is a full expression, not just a literal.
+    assert_snapshot!(parse_expr("a[i + 1]"), @r"
+    Index
+    ├── Var [a]
+    └── Binary [+]
+        ├── Var [i]
+        └── Int[1]
+    ");
+}
+
+#[test]
+fn index_chained() {
+    // Indexing is left-associative, so `a[0][1]` indexes the result of `a[0]`.
+    assert_snapshot!(parse_expr("a[0][1]"), @r"
+    Index
+    ├── Index
+    │   ├── Var [a]
+    │   └── Int[0]
+    └── Int[1]
+    ");
+}
+
+#[test]
+fn index_on_call_result() {
+    // A call result can be indexed directly: `foo()[0]`.
+    assert_snapshot!(parse_expr("foo()[0]"), @r"
+    Index
+    ├── Call
+    │   ├── Var [foo]
+    │   └── Args
+    └── Int[0]
+    ");
+}
+
+#[test]
+fn index_binds_tighter_than_addition_on_left() {
+    // `a[0] + 1` groups as `(a[0]) + 1`, since indexing binds tighter than `+`.
+    assert_snapshot!(parse_expr("a[0] + 1"), @r"
+    Binary [+]
+    ├── Index
+    │   ├── Var [a]
+    │   └── Int[0]
+    └── Int[1]
+    ");
+}
+
+#[test]
+fn index_binds_tighter_than_addition_on_right() {
+    // `a + b[0]` groups as `a + (b[0])`.
+    assert_snapshot!(parse_expr("a + b[0]"), @r"
+    Binary [+]
+    ├── Var [a]
+    └── Index
+        ├── Var [b]
+        └── Int[0]
+    ");
+}
+
+#[test]
+fn index_as_assignment_target() {
+    // An index expression can appear on the left of an assignment.
+    assert_snapshot!(parse_expr("a[0] = 1"), @r"
+    Assign
+    ├── Index
+    │   ├── Var [a]
+    │   └── Int[0]
+    └── Int[1]
+    ");
+}
+
+#[test]
+fn error_index_empty_subscript() {
+    // The subscript must be an expression; an empty `[]` is rejected.
+    assert_snapshot!(parse_module("fn foo() { a[] }"), @"
+    fn foo() { a[] }
+                 ^ ─── Unexpected `]`
+    ");
+}
+
+#[test]
+fn error_index_unclosed_bracket() {
+    // The subscript must be terminated by a closing `]`.
+    assert_snapshot!(parse_module("fn foo() { a[0 }"), @"
+    fn foo() { a[0 }
+                   ^ ─── Expected `]`, got `}`
+    ");
+}

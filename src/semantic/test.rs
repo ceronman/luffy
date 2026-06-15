@@ -850,3 +850,59 @@ fn error_array_unknown_element_type() {
                  ^^^ ─── Unknown type
     ");
 }
+
+// ── Array indexing tests ──────────────────────────────────────────────────────
+//
+// Indexing `expr[index]` requires `expr` to be an `Array[T]` and `index` to be
+// an `Int`. The result type is the element type `T`.
+
+#[test]
+fn valid_index_returns_element_type() {
+    // Indexing an `Array[Int]` yields an `Int`, which matches the return type.
+    assert_snapshot!(check("fn f(x Array[Int]) Int { return x[0] }"), @"<no error>");
+}
+
+#[test]
+fn valid_index_element_type_float() {
+    // The element type is propagated, so indexing an `Array[Float]` yields a Float.
+    assert_snapshot!(check("fn f(x Array[Float]) Float { return x[0] }"), @"<no error>");
+}
+
+#[test]
+fn valid_index_with_int_variable_index() {
+    // The index may be any `Int` expression, not just a literal.
+    assert_snapshot!(check("fn f(x Array[Int], i Int) Int { return x[i] }"), @"<no error>");
+}
+
+#[test]
+fn valid_index_result_used_in_arithmetic() {
+    // The element type flows into the surrounding expression.
+    assert_snapshot!(check("fn f(x Array[Int]) Int { return x[0] + 1 }"), @"<no error>");
+}
+
+#[test]
+fn valid_nested_index() {
+    // Indexing an `Array[Array[Int]]` once yields `Array[Int]`; indexing again
+    // yields `Int`.
+    assert_snapshot!(check("fn f(x Array[Array[Int]]) Int { return x[0][1] }"), @"<no error>");
+}
+
+#[test]
+fn error_index_non_array() {
+    // Only arrays can be indexed; indexing a non-array value is rejected at the
+    // indexed expression.
+    assert_snapshot!(check("fn f(x Int) Int { return x[0] }"), @"
+    fn f(x Int) Int { return x[0] }
+                             ^ ─── Type mismatch: expected Array, found 'Int'
+    ");
+}
+
+#[test]
+fn error_index_non_int_index() {
+    // The index must be an `Int`; a non-integer index is rejected at the index
+    // expression.
+    assert_snapshot!(check("fn f(x Array[Int]) Int { return x[1.5] }"), @"
+    fn f(x Array[Int]) Int { return x[1.5] }
+                                      ^^^ ─── Type mismatch: index expected as Int, found 'Float'
+    ");
+}
