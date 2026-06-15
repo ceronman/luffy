@@ -11,6 +11,7 @@ pub struct Module {
     pub exports: Vec<Export>,
 }
 
+#[derive(Clone)]
 pub enum Type {
     Function {
         params: Vec<ValType>,
@@ -29,6 +30,7 @@ pub enum ValType {
     Ref(TypeIdx),
 }
 
+#[derive(Clone)]
 pub enum StorageType {
     I8,
     I16,
@@ -88,8 +90,9 @@ pub enum Instruction {
 
     LocalGet(LocalIdx),
     LocalSet(LocalIdx),
-    Call(FuncIdx),
     Drop,
+    ArrayGet(TypeIdx),
+    Call(FuncIdx),
     End,
 }
 

@@ -370,6 +370,23 @@ impl Resolver {
                 let _ = unify_ty(value.node.span, &target_ty, &expr_ty)?;
                 Type::Unit
             }
+            ExprKind::Index { expr, index } => {
+                let expr_ty = self.expr(expr, func_id)?;
+                let Type::Array { ty: inner } = expr_ty else {
+                    return type_err(
+                        expr.node.span,
+                        format!("Type mismatch: expected Array, found '{expr_ty}'"),
+                    );
+                };
+                let index_ty = self.expr(index, func_id)?;
+                let Type::Int = index_ty else {
+                    return type_err(
+                        index.node.span,
+                        format!("Type mismatch: index expected as Int, found '{index_ty}'"),
+                    );
+                };
+                (*inner).clone()
+            }
             ExprKind::If {
                 condition,
                 then_branch,

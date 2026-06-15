@@ -232,6 +232,7 @@ impl<'src> Parser<'src> {
             }
             prefix = match self.current.kind {
                 TokenKind::LParen => self.call(prefix)?,
+                TokenKind::LBracket => self.index(prefix)?,
                 _ => self.binary_expr(prefix, precedence)?,
             };
         }
@@ -246,6 +247,19 @@ impl<'src> Parser<'src> {
         Ok(Expr {
             node: self.node(lparen.span, rparen.span),
             kind: inner.kind,
+        })
+    }
+
+    fn index(&mut self, prefix: Expr) -> Result<Expr> {
+        self.expect(TokenKind::LBracket)?;
+        let index = self.expression()?;
+        let rbracket = self.expect(TokenKind::RBracket)?;
+        Ok(Expr {
+            node: self.node(prefix.node.span, rbracket.span),
+            kind: ExprKind::Index {
+                expr: prefix.into(),
+                index: index.into(),
+            },
         })
     }
 

@@ -14,6 +14,7 @@ struct Compiler {
     local_addresses: HashMap<DeclarationId, LocalAddress>, // TODO: Unify both addresses?
     func_addresses: HashMap<DeclarationId, FuncAddress>,
     loops: Loops,
+    types: Types,
 }
 
 #[derive(Clone, Copy)]
@@ -43,7 +44,6 @@ struct LoopFrame {
 
 impl Compiler {
     fn module(&mut self, module: &ast::Module) -> ir::Module {
-        let mut types = Types::default();
         let mut imports = Vec::new();
         let mut functions = Vec::new();
         let mut exports = Vec::new();
@@ -51,7 +51,7 @@ impl Compiler {
         for declaration in &self.semantics.declarations {
             if let DeclarationKind::Import = &declaration.kind {
                 let func_idx = self.func_addresses.len() as ir::FuncIdx;
-                let ty_idx = types.get_or_create(&declaration.ty);
+                let ty_idx = self.types.get_or_create(&declaration.ty);
                 self.func_addresses.insert(
                     declaration.id,
                     FuncAddress {
@@ -73,14 +73,14 @@ impl Compiler {
             match &declaration.kind {
                 DeclarationKind::Function => {
                     let idx = self.func_addresses.len() as ir::FuncIdx;
-                    let ty_idx = types.get_or_create(&declaration.ty);
+                    let ty_idx = self.types.get_or_create(&declaration.ty);
                     self.func_addresses
                         .insert(declaration.id, FuncAddress { idx, ty_idx });
                 }
                 DeclarationKind::Local(fn_id) => {
                     let ty = match &declaration.ty {
                         Type::Array { .. } => {
-                            let ty_idx = types.get_or_create(&declaration.ty);
+                            let ty_idx = self.types.get_or_create(&declaration.ty);
                             ir::ValType::Ref(ty_idx)
                         }
                         _ => declaration.ty.lower_to_val_type(),
@@ -119,7 +119,7 @@ impl Compiler {
             }
         }
         ir::Module {
-            types: types.types,
+            types: self.types.types.clone(),
             imports,
             functions,
             exports,
@@ -331,6 +331,13 @@ impl Compiler {
                 self.expr(ins, value);
                 ins.push(ir::Instruction::LocalSet(address.idx));
             }
+            ast::ExprKind::Index { expr, index } => {
+                let ty = self.node_type(expr.node);
+                let ty = self.types.get(&ty);
+                self.expr(ins, expr);
+                self.expr(ins, index);
+                ins.push(ir::Instruction::ArrayGet(ty));
+            }
             ast::ExprKind::If {
                 condition,
                 then_branch,
@@ -466,6 +473,10 @@ impl Types {
         self.types.push(ty.lower_to_type());
         self.unique_types.insert(ty.clone(), idx);
         idx
+    }
+
+    fn get(&self, ty: &Type) -> ir::TypeIdx {
+        self.unique_types.get(ty).cloned().expect("Unknown type")
     }
 }
 

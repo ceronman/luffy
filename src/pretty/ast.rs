@@ -140,6 +140,11 @@ impl PrettyAst {
                 let value = Self::expression(value);
                 Self::new("Assign", vec![target, value])
             }
+            ExprKind::Index { expr, index } => {
+                let expr = Self::expression(expr);
+                let index = Self::expression(index);
+                Self::new("Index", vec![expr, index])
+            }
             ExprKind::If {
                 condition,
                 then_branch,

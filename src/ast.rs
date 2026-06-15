@@ -121,6 +121,10 @@ pub enum ExprKind {
         target: Box<Expr>,
         value: Box<Expr>,
     },
+    Index {
+        expr: Box<Expr>,
+        index: Box<Expr>,
+    },
     If {
         condition: Box<Expr>,
         then_branch: Box<Block>,

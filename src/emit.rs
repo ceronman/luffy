@@ -100,6 +100,8 @@ impl ir::Instruction {
         match self {
             ir::Instruction::LocalGet(idx) => Instruction::LocalGet(*idx),
             ir::Instruction::LocalSet(idx) => Instruction::LocalSet(*idx),
+            ir::Instruction::Drop => Instruction::Drop,
+            ir::Instruction::ArrayGet(idx) => Instruction::ArrayGet(*idx),
 
             ir::Instruction::I64Const(v) => Instruction::I64Const(*v),
             ir::Instruction::I64Add => Instruction::I64Add,
@@ -137,7 +139,6 @@ impl ir::Instruction {
             ir::Instruction::BrIf(label) => Instruction::BrIf(*label),
             ir::Instruction::Return => Instruction::Return,
             ir::Instruction::Call(func_idx) => Instruction::Call(*func_idx),
-            ir::Instruction::Drop => Instruction::Drop,
             ir::Instruction::End => Instruction::End,
         }
     }
