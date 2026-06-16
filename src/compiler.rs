@@ -236,6 +236,9 @@ impl Compiler {
                 let address = self.local_addr(name);
                 ins.push(ir::Instruction::LocalGet(address.idx))
             }
+            ast::ExprKind::Collection { .. } => {
+                todo!()
+            }
             ast::ExprKind::Unary { op, expr } => {
                 let ty = self.node_type(expr.node);
                 match (&op.kind, ty) {

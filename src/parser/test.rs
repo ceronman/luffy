@@ -2457,3 +2457,87 @@ fn error_index_unclosed_bracket() {
                    ^ ─── Expected `]`, got `}`
     ");
 }
+
+// ── Collection literal tests ──────────────────────────────────────────────────
+//
+// A `[` in prefix position starts a collection literal: a comma-separated list
+// of element expressions, parsed as a `Collection` node. (A `[` in infix
+// position is instead an index, see the indexing tests above.)
+
+#[test]
+fn collection_empty() {
+    assert_snapshot!(parse_expr("[]"), @"Collection");
+}
+
+#[test]
+fn collection_single_element() {
+    assert_snapshot!(parse_expr("[1]"), @r"
+    Collection
+    └── Int[1]
+    ");
+}
+
+#[test]
+fn collection_multiple_elements() {
+    assert_snapshot!(parse_expr("[1, 2, 3]"), @r"
+    Collection
+    ├── Int[1]
+    ├── Int[2]
+    └── Int[3]
+    ");
+}
+
+#[test]
+fn collection_with_expression_elements() {
+    // Each element is a full expression.
+    assert_snapshot!(parse_expr("[1 + 2, 3]"), @r"
+    Collection
+    ├── Binary [+]
+    │   ├── Int[1]
+    │   └── Int[2]
+    └── Int[3]
+    ");
+}
+
+#[test]
+fn collection_nested() {
+    // Elements may themselves be collections.
+    assert_snapshot!(parse_expr("[[1, 2], [3]]"), @r"
+    Collection
+    ├── Collection
+    │   ├── Int[1]
+    │   └── Int[2]
+    └── Collection
+        └── Int[3]
+    ");
+}
+
+#[test]
+fn collection_can_be_indexed() {
+    // A collection literal in prefix position can be immediately indexed.
+    assert_snapshot!(parse_expr("[1, 2][0]"), @r"
+    Index
+    ├── Collection
+    │   ├── Int[1]
+    │   └── Int[2]
+    └── Int[0]
+    ");
+}
+
+#[test]
+fn error_collection_trailing_comma() {
+    // A comma must be followed by another element; a trailing comma is rejected.
+    assert_snapshot!(parse_module("fn foo() { [1, 2,] }"), @"
+    fn foo() { [1, 2,] }
+                     ^ ─── Unexpected `]`
+    ");
+}
+
+#[test]
+fn error_collection_unclosed_bracket() {
+    // The element list must be terminated by a closing `]`.
+    assert_snapshot!(parse_module("fn foo() { [1, 2 }"), @"
+    fn foo() { [1, 2 }
+                     ^ ─── Expected `]`, got `}`
+    ");
+}

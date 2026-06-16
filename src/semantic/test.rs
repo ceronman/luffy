@@ -906,3 +906,58 @@ fn error_index_non_int_index() {
                                       ^^^ ─── Type mismatch: index expected as Int, found 'Float'
     ");
 }
+
+// ── Collection literal tests ──────────────────────────────────────────────────
+//
+// A collection literal `[a, b, c]` has type `Collection[T]`, where all elements
+// must unify to a common element type `T`. An empty collection has no element
+// type yet. A `Collection[T]` unifies with an `Array[T]`, so a collection
+// literal can initialize an array-typed binding.
+
+#[test]
+fn valid_collection_assigned_to_array() {
+    // A homogeneous collection unifies with the declared array type.
+    assert_snapshot!(check("fn f() { let x Array[Int] = [1, 2, 3] }"), @"<no error>");
+}
+
+#[test]
+fn valid_single_element_collection() {
+    assert_snapshot!(check("fn f() { let x Array[Int] = [42] }"), @"<no error>");
+}
+
+#[test]
+fn valid_empty_collection_assigned_to_array() {
+    // An empty collection has no element type and unifies with any array type.
+    assert_snapshot!(check("fn f() { let x Array[Int] = [] }"), @"<no error>");
+}
+
+#[test]
+fn valid_collection_of_floats() {
+    // The element type is inferred from the elements, here `Float`.
+    assert_snapshot!(check("fn f() { let x Array[Float] = [1.0, 2.0] }"), @"<no error>");
+}
+
+#[test]
+fn valid_nested_collection() {
+    // Nested collections unify with nested array types element-wise.
+    assert_snapshot!(check("fn f() { let x Array[Array[Int]] = [[1, 2], [3]] }"), @"<no error>");
+}
+
+#[test]
+fn error_collection_heterogeneous_elements() {
+    // All elements must unify to a single element type; mixing Int and Float is
+    // rejected at the offending element.
+    assert_snapshot!(check("fn f() { let x Array[Int] = [1, 2.0] }"), @"
+    fn f() { let x Array[Int] = [1, 2.0] }
+                                    ^^^ ─── Type mismatch: expected 'Int', found 'Float'
+    ");
+}
+
+#[test]
+fn error_collection_element_type_mismatch_with_array() {
+    // The collection's element type must match the declared array element type.
+    assert_snapshot!(check("fn f() { let x Array[Float] = [1, 2] }"), @"
+    fn f() { let x Array[Float] = [1, 2] }
+                                  ^^^^^^ ─── Type mismatch: expected 'Array[Float]', found 'Array[Int]'
+    ");
+}

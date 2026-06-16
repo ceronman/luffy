@@ -34,6 +34,7 @@ pub enum Type {
     Bool,
     Never,
     Array { ty: Rc<Type> },
+    Collection { ty: Option<Rc<Type>> },
     Function { params: Rc<[Type]>, ret: Rc<Type> },
 }
 
@@ -64,6 +65,10 @@ impl Display for Type {
             Type::Bool => write!(f, "Bool"),
             Type::Never => write!(f, "Never"),
             Type::Array { ty } => write!(f, "Array[{ty}]"),
+            Type::Collection { ty } => match ty.as_ref() {
+                Some(ty) => write!(f, "Collection[{ty}]"),
+                None => write!(f, "Empty Collection"),
+            },
             Type::Function { .. } => write!(f, "Function"), // TODO: improve
         }
     }
@@ -104,7 +109,25 @@ fn type_err<T: Debug>(span: Span, message: impl Into<String>) -> crate::parser::
 }
 
 fn unify_ty(span: Span, expected: &Type, actual: &Type) -> crate::parser::Result<Type> {
-    if actual == expected {
+    if let Type::Array { ty: expected_inner } = expected
+        && let Type::Collection { ty: actual_inner } = actual
+    {
+        if let Some(actual_inner) = actual_inner.as_ref() {
+            if unify_ty(span, expected_inner, actual_inner).is_ok() {
+                Ok(expected.clone())
+            } else {
+                let actual = Type::Array {
+                    ty: actual_inner.clone(),
+                };
+                type_err(
+                    span,
+                    format!("Type mismatch: expected '{expected}', found '{actual}'"),
+                )
+            }
+        } else {
+            Ok(expected.clone())
+        }
+    } else if actual == expected {
         Ok(actual.clone())
     } else if actual.is_never() {
         Ok(expected.clone())
@@ -276,6 +299,20 @@ impl Resolver {
                 let decl_id = self.lookup(name)?;
                 self.semantics.uses.insert(name.node.id, decl_id);
                 self.lookup_ty(name)?
+            }
+            ExprKind::Collection { elements } => {
+                let mut inner_ty = None;
+                for element in elements {
+                    let element_ty = self.expr(element, func_id)?;
+                    if let Some(current_ty) = &inner_ty {
+                        unify_ty(element.node.span, current_ty, &element_ty)?;
+                    } else {
+                        inner_ty = Some(element_ty);
+                    }
+                }
+                Type::Collection {
+                    ty: inner_ty.map(Rc::from),
+                }
             }
             ExprKind::Unary { expr, op } => {
                 let expr_ty = self.expr(expr, func_id)?;

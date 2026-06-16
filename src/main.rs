@@ -12,7 +12,7 @@ pub mod source;
 fn main() {
     let code = r#"
         export fn main() {
-            let foo Array[Int]
+            let foo Array[Int] = [1, 2, 3]
         }
     "#;
 

@@ -204,6 +204,7 @@ impl<'src> Parser<'src> {
     fn expression_precedence(&mut self, min_precedence: u8) -> Result<Expr> {
         let mut prefix = match self.current.kind {
             TokenKind::LParen => self.grouping()?,
+            TokenKind::LBracket => self.collection()?,
             TokenKind::Int | TokenKind::Float | TokenKind::False | TokenKind::True => {
                 self.literal()?
             }
@@ -247,6 +248,25 @@ impl<'src> Parser<'src> {
         Ok(Expr {
             node: self.node(lparen.span, rparen.span),
             kind: inner.kind,
+        })
+    }
+
+    fn collection(&mut self) -> Result<Expr> {
+        let lbracket = self.expect(TokenKind::LBracket)?;
+        let mut elements = Vec::new();
+        if self.current.kind != TokenKind::RBracket {
+            loop {
+                elements.push(self.expression()?);
+
+                if !self.eat(TokenKind::Comma) {
+                    break;
+                }
+            }
+        }
+        let rbracket = self.expect(TokenKind::RBracket)?;
+        Ok(Expr {
+            node: self.node(lbracket.span, rbracket.span),
+            kind: ExprKind::Collection { elements },
         })
     }
 

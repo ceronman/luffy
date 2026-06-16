@@ -122,6 +122,9 @@ impl PrettyAst {
         match &expression.kind {
             ExprKind::Literal { kind } => Self::literal(kind),
             ExprKind::Variable { name } => Self::new(format!("Var [{}]", name.symbol), vec![]),
+            ExprKind::Collection { elements } => {
+                Self::new("Collection", elements.iter().map(Self::expression))
+            }
             ExprKind::Unary { op, expr } => Self::new(
                 format!("Unary [{}]", Self::unary_op(&op.kind)),
                 vec![Self::expression(expr)],

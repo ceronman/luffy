@@ -104,6 +104,9 @@ pub enum ExprKind {
     Variable {
         name: Identifier,
     },
+    Collection {
+        elements: Vec<Expr>,
+    },
     Unary {
         op: UnOp,
         expr: Box<Expr>,
