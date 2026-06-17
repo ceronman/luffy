@@ -641,5 +641,117 @@ pub fn semantic_analysis(module: &Module) -> Result<Semantics> {
 
     resolver.module(module)?;
 
+    // TODO: Fix issue here
+    // #[cfg(debug_assertions)]
+    // assert_fully_typed(module, &resolver.semantics);
+
     Ok(resolver.semantics)
+}
+
+#[expect(dead_code)]
+#[cfg(debug_assertions)]
+fn assert_fully_typed(module: &Module, semantics: &Semantics) {
+    fn assert_no_type_var(ty: &Type, node: Node) {
+        match ty {
+            Type::TypeVar { .. } => {
+                panic!(
+                    "expression {} (span {:?}) has an unresolved TypeVar type after semantic analysis",
+                    node.id, node.span
+                );
+            }
+            Type::Array { ty } => assert_no_type_var(ty, node),
+            Type::Function { params, ret } => {
+                for param in params.iter() {
+                    assert_no_type_var(param, node);
+                }
+                assert_no_type_var(ret, node);
+            }
+            Type::Unit | Type::Int | Type::Float | Type::Bool | Type::Never => {}
+        }
+    }
+
+    fn check_expr(expr: &Expr, semantics: &Semantics) {
+        let ty = semantics.expr_types.get(&expr.node.id).unwrap_or_else(|| {
+            panic!(
+                "expression {} (span {:?}) has no type assigned after semantic analysis",
+                expr.node.id, expr.node.span
+            )
+        });
+        assert_no_type_var(ty, expr.node);
+
+        match &expr.kind {
+            ExprKind::Literal { .. }
+            | ExprKind::Variable { .. }
+            | ExprKind::Break
+            | ExprKind::Continue => {}
+            ExprKind::Collection { elements } => {
+                for element in elements {
+                    check_expr(element, semantics);
+                }
+            }
+            ExprKind::Unary { expr, .. } => check_expr(expr, semantics),
+            ExprKind::Binary { left, right, .. } => {
+                check_expr(left, semantics);
+                check_expr(right, semantics);
+            }
+            ExprKind::Call { callee, args } => {
+                check_expr(callee, semantics);
+                for arg in args {
+                    check_expr(arg, semantics);
+                }
+            }
+            ExprKind::Assignment { target, value } => {
+                check_expr(target, semantics);
+                check_expr(value, semantics);
+            }
+            ExprKind::Index { expr, index } => {
+                check_expr(expr, semantics);
+                check_expr(index, semantics);
+            }
+            ExprKind::If {
+                condition,
+                then_branch,
+                else_branch,
+            } => {
+                check_expr(condition, semantics);
+                check_block(then_branch, semantics);
+                if let Some(else_branch) = else_branch {
+                    check_block(else_branch, semantics);
+                }
+            }
+            ExprKind::Return { expr } => check_expr(expr, semantics),
+        }
+    }
+
+    fn check_block(block: &Block, semantics: &Semantics) {
+        match &block.kind {
+            BlockKind::Braces { statements } => {
+                for stmt in statements {
+                    check_stmt(stmt, semantics);
+                }
+            }
+            BlockKind::Expr { expr } => check_expr(expr, semantics),
+        }
+    }
+
+    fn check_stmt(stmt: &Stmt, semantics: &Semantics) {
+        match &stmt.kind {
+            StmtKind::ExprStmt { expr } => check_expr(expr, semantics),
+            StmtKind::Declaration { initializer, .. } => {
+                if let Some(initializer) = initializer {
+                    check_expr(initializer, semantics);
+                }
+            }
+            StmtKind::While { condition, body } => {
+                check_expr(condition, semantics);
+                check_block(body, semantics);
+            }
+        }
+    }
+
+    for item in &module.items {
+        if let ItemKind::Function { body, .. } = &item.kind {
+            check_block(body, semantics);
+        }
+    }
 }
