@@ -34,8 +34,13 @@ pub enum Type {
     Bool,
     Never,
     Array { ty: Rc<Type> },
-    Collection { ty: Option<Rc<Type>> },
     Function { params: Rc<[Type]>, ret: Rc<Type> },
+    TypeVar { kind: TypeVarKind },
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+pub enum TypeVarKind {
+    Collection { ty: Option<Rc<Type>> },
 }
 
 impl Type {
@@ -65,11 +70,8 @@ impl Display for Type {
             Type::Bool => write!(f, "Bool"),
             Type::Never => write!(f, "Never"),
             Type::Array { ty } => write!(f, "Array[{ty}]"),
-            Type::Collection { ty } => match ty.as_ref() {
-                Some(ty) => write!(f, "Collection[{ty}]"),
-                None => write!(f, "Empty Collection"),
-            },
             Type::Function { .. } => write!(f, "Function"), // TODO: improve
+            Type::TypeVar { .. } => write!(f, "TypeVar"),
         }
     }
 }
@@ -110,9 +112,12 @@ fn type_err<T: Debug>(span: Span, message: impl Into<String>) -> crate::parser::
 
 fn unify_ty(span: Span, expected: &Type, actual: &Type) -> crate::parser::Result<Type> {
     if let Type::Array { ty: expected_inner } = expected
-        && let Type::Collection { ty: actual_inner } = actual
+        && let Type::TypeVar {
+            kind: TypeVarKind::Collection { ty: actual_inner },
+        } = actual
     {
         if let Some(actual_inner) = actual_inner.as_ref() {
+            // TODO: Test if nested arrays endup with `Collection` type var
             if unify_ty(span, expected_inner, actual_inner).is_ok() {
                 Ok(expected.clone())
             } else {
@@ -233,7 +238,8 @@ impl Resolver {
             BlockKind::Expr { expr } => {
                 let ty = self.expr(expr, func_id)?;
                 let ret = self.function_ret_ty(block.node, func_id)?;
-                unify_ty(expr.node.span, &ret, &ty)?;
+                let unified_ty = unify_ty(expr.node.span, &ret, &ty)?;
+                self.semantics.expr_types.insert(expr.node.id, unified_ty);
             }
         }
         Ok(())
@@ -270,7 +276,11 @@ impl Resolver {
                 let var_ty = self.ty_ref(ty)?;
                 if let Some(initializer) = initializer {
                     let init_ty = self.expr(initializer, func_id)?;
-                    unify_ty(initializer.node.span, &var_ty, &init_ty)?;
+                    // TODO: common pattern. Deduplicate?
+                    let unified_ty = unify_ty(initializer.node.span, &var_ty, &init_ty)?;
+                    self.semantics
+                        .expr_types
+                        .insert(initializer.node.id, unified_ty);
                 }
                 self.declare_local(name, var_ty, func_id)?;
                 Type::Unit
@@ -310,8 +320,10 @@ impl Resolver {
                         inner_ty = Some(element_ty);
                     }
                 }
-                Type::Collection {
-                    ty: inner_ty.map(Rc::from),
+                Type::TypeVar {
+                    kind: TypeVarKind::Collection {
+                        ty: inner_ty.map(Rc::from),
+                    },
                 }
             }
             ExprKind::Unary { expr, op } => {
@@ -391,9 +403,10 @@ impl Resolver {
                         "Invalid function call: callee is not a function",
                     );
                 };
-                for (arg, param_ty) in args.iter().zip(params.iter()) {
+                for (param_ty, arg) in params.iter().zip(args.iter()) {
                     let arg_ty = self.expr(arg, func_id)?;
-                    let _ = unify_ty(arg.node.span, param_ty, &arg_ty)?;
+                    let unified_ty = unify_ty(arg.node.span, param_ty, &arg_ty)?;
+                    self.semantics.expr_types.insert(arg.node.id, unified_ty);
                 }
                 (*ret).clone()
             }
@@ -404,7 +417,8 @@ impl Resolver {
                 };
                 let target_ty = self.lookup_ty(name)?;
                 let expr_ty = self.expr(value, func_id)?;
-                let _ = unify_ty(value.node.span, &target_ty, &expr_ty)?;
+                let unified_ty = unify_ty(value.node.span, &target_ty, &expr_ty)?;
+                self.semantics.expr_types.insert(value.node.id, unified_ty);
                 Type::Unit
             }
             ExprKind::Index { expr, index } => {
@@ -451,7 +465,8 @@ impl Resolver {
             ExprKind::Return { expr: inner } => {
                 let inner_ty = self.expr(inner, func_id)?;
                 let ret = self.function_ret_ty(inner.node, func_id)?;
-                unify_ty(inner.node.span, &ret, &inner_ty)?;
+                let unified_ty = unify_ty(inner.node.span, &ret, &inner_ty)?;
+                self.semantics.expr_types.insert(inner.node.id, unified_ty);
                 Type::Never
             }
         };
@@ -473,6 +488,7 @@ impl Resolver {
         let ty = if let Some(else_branch) = else_branch {
             let else_ty = self.block_type(else_branch, func_id)?;
             // TODO: node shoud be tail of block for clarity
+            // TODO: these two should be properly unified
             unify_ty(else_branch.node.span, &then_ty, &else_ty)?
         } else if mandatory_else {
             return type_err(
