@@ -958,6 +958,16 @@ fn error_collection_element_type_mismatch_with_array() {
     // The collection's element type must match the declared array element type.
     assert_snapshot!(check("fn f() { let x Array[Float] = [1, 2] }"), @"
     fn f() { let x Array[Float] = [1, 2] }
-                                  ^^^^^^ ─── Type mismatch: expected 'Array[Float]', found 'Array[Int]'
+                                   ^ ─── Type mismatch: expected 'Float', found 'Int'
     ");
 }
+
+// #[test]
+// fn error_collection_element_type_mismatch_with_if_blocks() {
+//     assert_snapshot!(check("fn f() Array[Int]: if true { [1, 2] } else { [1.0, 2.0] }"), @"");
+// }
+//
+// #[test]
+// fn error_collection_element_type_mismatch_with_if_expr() {
+//     assert_snapshot!(check("fn f() Array[Int]: if true: [1, 2] else: [1.0, 2.0]"), @"");
+// }

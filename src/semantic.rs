@@ -35,12 +35,6 @@ pub enum Type {
     Never,
     Array { ty: Rc<Type> },
     Function { params: Rc<[Type]>, ret: Rc<Type> },
-    TypeVar { kind: TypeVarKind },
-}
-
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub enum TypeVarKind {
-    Collection { ty: Option<Rc<Type>> },
 }
 
 impl Type {
@@ -71,7 +65,6 @@ impl Display for Type {
             Type::Never => write!(f, "Never"),
             Type::Array { ty } => write!(f, "Array[{ty}]"),
             Type::Function { .. } => write!(f, "Function"), // TODO: improve
-            Type::TypeVar { .. } => write!(f, "TypeVar"),
         }
     }
 }
@@ -111,28 +104,7 @@ fn type_err<T: Debug>(span: Span, message: impl Into<String>) -> crate::parser::
 }
 
 fn unify_ty(span: Span, expected: &Type, actual: &Type) -> crate::parser::Result<Type> {
-    if let Type::Array { ty: expected_inner } = expected
-        && let Type::TypeVar {
-            kind: TypeVarKind::Collection { ty: actual_inner },
-        } = actual
-    {
-        if let Some(actual_inner) = actual_inner.as_ref() {
-            // TODO: Test if nested arrays endup with `Collection` type var
-            if unify_ty(span, expected_inner, actual_inner).is_ok() {
-                Ok(expected.clone())
-            } else {
-                let actual = Type::Array {
-                    ty: actual_inner.clone(),
-                };
-                type_err(
-                    span,
-                    format!("Type mismatch: expected '{expected}', found '{actual}'"),
-                )
-            }
-        } else {
-            Ok(expected.clone())
-        }
-    } else if actual == expected {
+    if actual == expected {
         Ok(actual.clone())
     } else if actual.is_never() {
         Ok(expected.clone())
@@ -236,10 +208,9 @@ impl Resolver {
                 }
             }
             BlockKind::Expr { expr } => {
-                let ty = self.expr(expr, func_id)?;
-                let ret = self.function_ret_ty(block.node, func_id)?;
-                let unified_ty = unify_ty(expr.node.span, &ret, &ty)?;
-                self.semantics.expr_types.insert(expr.node.id, unified_ty);
+                let ret_ty = self.function_ret_ty(block.node, func_id)?;
+                let ty = self.expr(expr, func_id, Some(&ret_ty))?;
+                unify_ty(expr.node.span, &ret_ty, &ty)?;
             }
         }
         Ok(())
@@ -261,11 +232,12 @@ impl Resolver {
                         else_branch.as_deref(),
                         false,
                         func_id,
+                        None,
                     )?;
                     self.semantics.expr_types.insert(expr.node.id, ty.clone());
                     ty
                 } else {
-                    self.expr(expr, func_id)?
+                    self.expr(expr, func_id, None)?
                 }
             }
             StmtKind::Declaration {
@@ -275,12 +247,8 @@ impl Resolver {
             } => {
                 let var_ty = self.ty_ref(ty)?;
                 if let Some(initializer) = initializer {
-                    let init_ty = self.expr(initializer, func_id)?;
-                    // TODO: common pattern. Deduplicate?
-                    let unified_ty = unify_ty(initializer.node.span, &var_ty, &init_ty)?;
-                    self.semantics
-                        .expr_types
-                        .insert(initializer.node.id, unified_ty);
+                    let init_ty = self.expr(initializer, func_id, Some(&var_ty))?;
+                    unify_ty(initializer.node.span, &var_ty, &init_ty)?;
                 }
                 self.declare_local(name, var_ty, func_id)?;
                 Type::Unit
@@ -288,7 +256,7 @@ impl Resolver {
             StmtKind::While { condition, body } => {
                 self.check_condition(condition, func_id, "while")?;
                 self.loop_depth += 1;
-                let result = self.block_type(body, func_id);
+                let result = self.block_type(body, func_id, None);
                 self.loop_depth -= 1;
                 result?;
                 Type::Unit
@@ -297,8 +265,12 @@ impl Resolver {
         self.semantics.expr_types.insert(stmt.node.id, Type::Unit);
         Ok(ty)
     }
-
-    fn expr(&mut self, expr: &Expr, func_id: DeclarationId) -> Result<Type> {
+    fn expr(
+        &mut self,
+        expr: &Expr,
+        func_id: DeclarationId,
+        expected_ty: Option<&Type>,
+    ) -> Result<Type> {
         let ty = match &expr.kind {
             ExprKind::Literal { kind } => match kind {
                 LiteralKind::Int(_) => Type::Int,
@@ -311,23 +283,26 @@ impl Resolver {
                 self.lookup_ty(name)?
             }
             ExprKind::Collection { elements } => {
-                let mut inner_ty = None;
+                let Some(collection_ty) = expected_ty else {
+                    return type_err(
+                        expr.node.span,
+                        "Not enough information to infer type of collection",
+                    );
+                };
+                let Type::Array { ty: inner } = collection_ty else {
+                    return type_err(
+                        expr.node.span,
+                        format!("Type mismatch: expected '{collection_ty}', found collection"),
+                    );
+                };
                 for element in elements {
-                    let element_ty = self.expr(element, func_id)?;
-                    if let Some(current_ty) = &inner_ty {
-                        unify_ty(element.node.span, current_ty, &element_ty)?;
-                    } else {
-                        inner_ty = Some(element_ty);
-                    }
+                    let element_ty = self.expr(element, func_id, Some(inner))?;
+                    unify_ty(element.node.span, inner, &element_ty)?;
                 }
-                Type::TypeVar {
-                    kind: TypeVarKind::Collection {
-                        ty: inner_ty.map(Rc::from),
-                    },
-                }
+                collection_ty.clone()
             }
             ExprKind::Unary { expr, op } => {
-                let expr_ty = self.expr(expr, func_id)?;
+                let expr_ty = self.expr(expr, func_id, None)?;
                 match op.kind {
                     UnOpKind::Neg => {
                         if !expr_ty.is_numeric() {
@@ -349,8 +324,8 @@ impl Resolver {
                 expr_ty
             }
             ExprKind::Binary { op, left, right } => {
-                let left_ty = self.expr(left, func_id)?;
-                let right_ty = self.expr(right, func_id)?;
+                let left_ty = self.expr(left, func_id, None)?;
+                let right_ty = self.expr(right, func_id, None)?;
                 let result_ty = unify_ty(right.node.span, &left_ty, &right_ty)?;
                 match op.kind {
                     BinOpKind::Add | BinOpKind::Sub | BinOpKind::Mul | BinOpKind::Div => {
@@ -397,39 +372,38 @@ impl Resolver {
                 }
             }
             ExprKind::Call { callee, args } => {
-                let Type::Function { params, ret } = self.expr(callee, func_id)? else {
+                let Type::Function { params, ret } = self.expr(callee, func_id, None)? else {
                     return type_err(
                         callee.node.span,
                         "Invalid function call: callee is not a function",
                     );
                 };
                 for (param_ty, arg) in params.iter().zip(args.iter()) {
-                    let arg_ty = self.expr(arg, func_id)?;
+                    let arg_ty = self.expr(arg, func_id, Some(param_ty))?;
                     let unified_ty = unify_ty(arg.node.span, param_ty, &arg_ty)?;
                     self.semantics.expr_types.insert(arg.node.id, unified_ty);
                 }
                 (*ret).clone()
             }
             ExprKind::Assignment { target, value } => {
-                self.expr(target, func_id)?;
+                self.expr(target, func_id, None)?;
                 let ExprKind::Variable { name } = &target.kind else {
                     return resolve_err(target.node.span, "Invalid assignment target");
                 };
                 let target_ty = self.lookup_ty(name)?;
-                let expr_ty = self.expr(value, func_id)?;
-                let unified_ty = unify_ty(value.node.span, &target_ty, &expr_ty)?;
-                self.semantics.expr_types.insert(value.node.id, unified_ty);
+                let expr_ty = self.expr(value, func_id, Some(&target_ty))?;
+                unify_ty(value.node.span, &target_ty, &expr_ty)?;
                 Type::Unit
             }
             ExprKind::Index { expr, index } => {
-                let expr_ty = self.expr(expr, func_id)?;
+                let expr_ty = self.expr(expr, func_id, None)?;
                 let Type::Array { ty: inner } = expr_ty else {
                     return type_err(
                         expr.node.span,
                         format!("Type mismatch: expected Array, found '{expr_ty}'"),
                     );
                 };
-                let index_ty = self.expr(index, func_id)?;
+                let index_ty = self.expr(index, func_id, None)?;
                 let Type::Int = index_ty else {
                     return type_err(
                         index.node.span,
@@ -449,6 +423,7 @@ impl Resolver {
                 else_branch.as_deref(),
                 true,
                 func_id,
+                expected_ty,
             )?,
             ExprKind::Break => {
                 if self.loop_depth == 0 {
@@ -463,10 +438,9 @@ impl Resolver {
                 Type::Never
             }
             ExprKind::Return { expr: inner } => {
-                let inner_ty = self.expr(inner, func_id)?;
-                let ret = self.function_ret_ty(inner.node, func_id)?;
-                let unified_ty = unify_ty(inner.node.span, &ret, &inner_ty)?;
-                self.semantics.expr_types.insert(inner.node.id, unified_ty);
+                let ret_ty = self.function_ret_ty(inner.node, func_id)?;
+                let inner_ty = self.expr(inner, func_id, Some(&ret_ty))?;
+                unify_ty(inner.node.span, &ret_ty, &inner_ty)?;
                 Type::Never
             }
         };
@@ -474,6 +448,7 @@ impl Resolver {
         Ok(ty)
     }
 
+    #[allow(clippy::too_many_arguments)]
     fn if_expr(
         &mut self,
         node: Node,
@@ -482,13 +457,13 @@ impl Resolver {
         else_branch: Option<&Block>,
         mandatory_else: bool,
         func_id: DeclarationId,
+        expected_ty: Option<&Type>,
     ) -> Result<Type> {
         self.check_condition(condition, func_id, "if")?;
-        let then_ty = self.block_type(then_branch, func_id)?;
+        let then_ty = self.block_type(then_branch, func_id, expected_ty)?;
         let ty = if let Some(else_branch) = else_branch {
-            let else_ty = self.block_type(else_branch, func_id)?;
+            let else_ty = self.block_type(else_branch, func_id, expected_ty)?;
             // TODO: node shoud be tail of block for clarity
-            // TODO: these two should be properly unified
             unify_ty(else_branch.node.span, &then_ty, &else_ty)?
         } else if mandatory_else {
             return type_err(
@@ -507,7 +482,7 @@ impl Resolver {
         func_id: DeclarationId,
         keyword: &str,
     ) -> Result<()> {
-        let cond_ty = self.expr(condition, func_id)?;
+        let cond_ty = self.expr(condition, func_id, None)?;
         if !cond_ty.is_bool() {
             return type_err(
                 condition.node.span,
@@ -517,7 +492,12 @@ impl Resolver {
         Ok(())
     }
 
-    fn block_type(&mut self, block: &Block, func_id: DeclarationId) -> Result<Type> {
+    fn block_type(
+        &mut self,
+        block: &Block,
+        func_id: DeclarationId,
+        expected_ty: Option<&Type>,
+    ) -> Result<Type> {
         self.begin_scope();
         let ty = match &block.kind {
             BlockKind::Braces { statements } => {
@@ -527,7 +507,7 @@ impl Resolver {
                 }
                 result
             }
-            BlockKind::Expr { expr } => self.expr(expr, func_id)?,
+            BlockKind::Expr { expr } => self.expr(expr, func_id, expected_ty)?,
         };
         self.end_scope();
         Ok(ty)
@@ -641,44 +621,21 @@ pub fn semantic_analysis(module: &Module) -> Result<Semantics> {
 
     resolver.module(module)?;
 
-    // TODO: Fix issue here
-    // #[cfg(debug_assertions)]
-    // assert_fully_typed(module, &resolver.semantics);
+    #[cfg(debug_assertions)]
+    assert_fully_typed(module, &resolver.semantics);
 
     Ok(resolver.semantics)
 }
 
-#[expect(dead_code)]
 #[cfg(debug_assertions)]
 fn assert_fully_typed(module: &Module, semantics: &Semantics) {
-    fn assert_no_type_var(ty: &Type, node: Node) {
-        match ty {
-            Type::TypeVar { .. } => {
-                panic!(
-                    "expression {} (span {:?}) has an unresolved TypeVar type after semantic analysis",
-                    node.id, node.span
-                );
-            }
-            Type::Array { ty } => assert_no_type_var(ty, node),
-            Type::Function { params, ret } => {
-                for param in params.iter() {
-                    assert_no_type_var(param, node);
-                }
-                assert_no_type_var(ret, node);
-            }
-            Type::Unit | Type::Int | Type::Float | Type::Bool | Type::Never => {}
-        }
-    }
-
     fn check_expr(expr: &Expr, semantics: &Semantics) {
-        let ty = semantics.expr_types.get(&expr.node.id).unwrap_or_else(|| {
+        semantics.expr_types.get(&expr.node.id).unwrap_or_else(|| {
             panic!(
                 "expression {} (span {:?}) has no type assigned after semantic analysis",
                 expr.node.id, expr.node.span
             )
         });
-        assert_no_type_var(ty, expr.node);
-
         match &expr.kind {
             ExprKind::Literal { .. }
             | ExprKind::Variable { .. }
