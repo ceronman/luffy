@@ -440,9 +440,9 @@ fn main() Int { return add(1, true) }"#;
 #[test]
 fn error_function_block_without_return() {
     let src = "fn add(a Int, b Int) Int { a + b }";
-    assert_snapshot!(check(src), @r"
+    assert_snapshot!(check(src), @"
     fn add(a Int, b Int) Int { a + b }
-                                     ^ ─── Missing return statement
+                             ^^^^^^^^^ ─── Missing return statement
     ");
 }
 
@@ -650,7 +650,7 @@ fn valid_if_branch_last_expression_determines_type() {
 fn error_if_expression_without_else() {
     assert_snapshot!(check("fn f(a Int) Int { let b Int = if a > 0: 0 }"), @"
     fn f(a Int) Int { let b Int = if a > 0: 0 }
-                                  ^^^^^^^^^^^ ─── 'if' must have both main and 'else' branches when used as an expression.
+                                  ^^^^^^^^^^^ ─── Type mismatch: expected 'Int', found 'Unit'
     ");
 }
 
@@ -795,7 +795,7 @@ fn error_return_wrong_type() {
 fn error_missing_return_non_unit() {
     assert_snapshot!(check("fn f() Int { let x Int = 1 }"), @"
     fn f() Int { let x Int = 1 }
-                               ^ ─── Missing return statement
+               ^^^^^^^^^^^^^^^^^ ─── Missing return statement
     ");
 }
 
@@ -962,12 +962,34 @@ fn error_collection_element_type_mismatch_with_array() {
     ");
 }
 
-// #[test]
-// fn error_collection_element_type_mismatch_with_if_blocks() {
-//     assert_snapshot!(check("fn f() Array[Int]: if true { [1, 2] } else { [1.0, 2.0] }"), @"");
-// }
-//
-// #[test]
-// fn error_collection_element_type_mismatch_with_if_expr() {
-//     assert_snapshot!(check("fn f() Array[Int]: if true: [1, 2] else: [1.0, 2.0]"), @"");
-// }
+#[test]
+fn error_collection_element_type_mismatch_with_if_blocks() {
+    assert_snapshot!(check("fn f() Array[Int]: if true { [1, 2] } else { [1.0, 2.0] }"), @"
+    fn f() Array[Int]: if true { [1, 2] } else { [1.0, 2.0] }
+                                                  ^^^ ─── Type mismatch: expected 'Int', found 'Float'
+    ");
+}
+
+#[test]
+fn error_collection_element_type_mismatch_with_if_expr() {
+    assert_snapshot!(check("fn f() Array[Int]: if true: [1, 2] else: [1.0, 2.0]"), @"
+    fn f() Array[Int]: if true: [1, 2] else: [1.0, 2.0]
+                                              ^^^ ─── Type mismatch: expected 'Int', found 'Float'
+    ");
+}
+
+#[test]
+fn error_collection_element_type_mismatch_with_call() {
+    assert_snapshot!(check("fn f() Array[Int]: [true, false]"), @"
+    fn f() Array[Int]: [true, false]
+                        ^^^^ ─── Type mismatch: expected 'Int', found 'Bool'
+    ");
+}
+
+#[test]
+fn error_collection_element_type_mismatch_with_call_and_return() {
+    assert_snapshot!(check("fn f() Array[Int] { let a Int = 1; return [true, false] }"), @"
+    fn f() Array[Int] { let a Int = 1; return [true, false] }
+                                               ^^^^ ─── Type mismatch: expected 'Int', found 'Bool'
+    ");
+}

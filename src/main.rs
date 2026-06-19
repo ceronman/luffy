@@ -11,8 +11,11 @@ pub mod source;
 
 fn main() {
     let code = r#"
-        export fn main() {
-            let foo Array[Int] = [1, 2, 3]
+        fn f(a Int) {
+            while a > 0 {
+                if a > 5 { break }
+                a = a - 1
+            }
         }
     "#;
 

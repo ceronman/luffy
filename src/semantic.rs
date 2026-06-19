@@ -187,58 +187,29 @@ impl Resolver {
             let ty = self.ty_ref(ty)?;
             self.declare_local(param_name, ty, decl_id)?
         }
-        self.block(body, decl_id)?;
+        let ret_ty = self.function_ret_ty(body.node, decl_id)?;
+        match &body.kind {
+            BlockKind::Braces { statements } => {
+                let block_ty = self.statements(statements, decl_id, None)?;
+                // TODO: Improve this logic to be more clear
+                if !ret_ty.is_unit() && !block_ty.is_never() {
+                    return type_err(body.node.span, "Missing return statement");
+                }
+            }
+            BlockKind::Expr { expr } => {
+                let ty = self.expr(expr, decl_id, Some(&ret_ty))?;
+                unify_ty(expr.node.span, &ret_ty, &ty)?;
+            }
+        }
         self.end_scope();
 
         Ok(())
     }
 
-    fn block(&mut self, block: &Block, func_id: DeclarationId) -> Result<()> {
-        match &block.kind {
-            BlockKind::Braces { statements } => {
-                let mut block_ty = Type::Unit;
-                for stmt in statements {
-                    block_ty = self.stmt(stmt, func_id)?;
-                }
-                // TODO: Improve this logic to be more clear
-                let ret = self.function_ret_ty(block.node, func_id)?;
-                if !ret.is_unit() && !block_ty.is_never() {
-                    let end = block.node.span.end;
-                    return type_err(Span::new(end - 1, end), "Missing return statement");
-                }
-            }
-            BlockKind::Expr { expr } => {
-                let ret_ty = self.function_ret_ty(block.node, func_id)?;
-                let ty = self.expr(expr, func_id, Some(&ret_ty))?;
-                unify_ty(expr.node.span, &ret_ty, &ty)?;
-            }
-        }
-        Ok(())
-    }
-
-    fn stmt(&mut self, stmt: &Stmt, func_id: DeclarationId) -> Result<Type> {
-        let ty = match &stmt.kind {
+    fn stmt(&mut self, stmt: &Stmt, func_id: DeclarationId) -> Result<()> {
+        match &stmt.kind {
             StmtKind::ExprStmt { expr } => {
-                if let ExprKind::If {
-                    condition,
-                    then_branch,
-                    else_branch,
-                } = &expr.kind
-                {
-                    let ty = self.if_expr(
-                        expr.node,
-                        condition,
-                        then_branch,
-                        else_branch.as_deref(),
-                        false,
-                        func_id,
-                        None,
-                    )?;
-                    self.semantics.expr_types.insert(expr.node.id, ty.clone());
-                    ty
-                } else {
-                    self.expr(expr, func_id, None)?
-                }
+                self.expr(expr, func_id, None)?;
             }
             StmtKind::Declaration {
                 name,
@@ -251,19 +222,15 @@ impl Resolver {
                     unify_ty(initializer.node.span, &var_ty, &init_ty)?;
                 }
                 self.declare_local(name, var_ty, func_id)?;
-                Type::Unit
             }
             StmtKind::While { condition, body } => {
                 self.check_condition(condition, func_id, "while")?;
                 self.loop_depth += 1;
-                let result = self.block_type(body, func_id, None);
+                self.block(body, func_id, None)?;
                 self.loop_depth -= 1;
-                result?;
-                Type::Unit
             }
-        };
-        self.semantics.expr_types.insert(stmt.node.id, Type::Unit);
-        Ok(ty)
+        }
+        Ok(())
     }
     fn expr(
         &mut self,
@@ -416,15 +383,20 @@ impl Resolver {
                 condition,
                 then_branch,
                 else_branch,
-            } => self.if_expr(
-                expr.node,
-                condition,
-                then_branch,
-                else_branch.as_deref(),
-                true,
-                func_id,
-                expected_ty,
-            )?,
+            } => {
+                self.check_condition(condition, func_id, "if")?;
+                let then_ty = self.block(then_branch, func_id, expected_ty)?;
+                let else_ty = if let Some(else_branch) = else_branch {
+                    self.block(else_branch, func_id, expected_ty)?
+                } else {
+                    Type::Unit
+                };
+                let span = else_branch
+                    .as_ref()
+                    .map(|e| e.node.span)
+                    .unwrap_or(expr.node.span);
+                unify_ty(span, &then_ty, &else_ty)?
+            }
             ExprKind::Break => {
                 if self.loop_depth == 0 {
                     return resolve_err(expr.node.span, "'break' outside of a loop");
@@ -448,34 +420,6 @@ impl Resolver {
         Ok(ty)
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn if_expr(
-        &mut self,
-        node: Node,
-        condition: &Expr,
-        then_branch: &Block,
-        else_branch: Option<&Block>,
-        mandatory_else: bool,
-        func_id: DeclarationId,
-        expected_ty: Option<&Type>,
-    ) -> Result<Type> {
-        self.check_condition(condition, func_id, "if")?;
-        let then_ty = self.block_type(then_branch, func_id, expected_ty)?;
-        let ty = if let Some(else_branch) = else_branch {
-            let else_ty = self.block_type(else_branch, func_id, expected_ty)?;
-            // TODO: node shoud be tail of block for clarity
-            unify_ty(else_branch.node.span, &then_ty, &else_ty)?
-        } else if mandatory_else {
-            return type_err(
-                node.span,
-                "'if' must have both main and 'else' branches when used as an expression.",
-            );
-        } else {
-            Type::Unit
-        };
-        Ok(ty)
-    }
-
     fn check_condition(
         &mut self,
         condition: &Expr,
@@ -492,7 +436,7 @@ impl Resolver {
         Ok(())
     }
 
-    fn block_type(
+    fn block(
         &mut self,
         block: &Block,
         func_id: DeclarationId,
@@ -501,16 +445,30 @@ impl Resolver {
         self.begin_scope();
         let ty = match &block.kind {
             BlockKind::Braces { statements } => {
-                let mut result = Type::Unit;
-                for stmt in statements {
-                    result = self.stmt(stmt, func_id)?;
-                }
-                result
+                self.statements(statements, func_id, expected_ty)?
             }
             BlockKind::Expr { expr } => self.expr(expr, func_id, expected_ty)?,
         };
         self.end_scope();
         Ok(ty)
+    }
+
+    fn statements(
+        &mut self,
+        statements: &[Stmt],
+        func_id: DeclarationId,
+        expected_ty: Option<&Type>,
+    ) -> Result<Type> {
+        let mut result = Type::Unit;
+        for stmt in statements {
+            if let StmtKind::ExprStmt { expr } = &stmt.kind {
+                result = self.expr(expr, func_id, expected_ty)?
+            } else {
+                self.stmt(stmt, func_id)?;
+                result = Type::Unit;
+            }
+        }
+        Ok(result)
     }
 
     fn begin_scope(&mut self) {
@@ -584,7 +542,7 @@ impl Resolver {
     }
 
     fn function_ret_ty(&self, node: Node, func_id: DeclarationId) -> Result<Type> {
-        let Some(function_decl) = &self.semantics.declarations.get(func_id) else {
+        let Some(function_decl) = self.semantics.declarations.get(func_id) else {
             return resolve_err(node.span, "Enclosing function not found");
         };
         let Type::Function { ret, .. } = function_decl.ty.clone() else {
