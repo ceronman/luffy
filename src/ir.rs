@@ -94,6 +94,7 @@ pub enum Instruction {
     Drop,
 
     ArrayGet(TypeIdx),
+    ArraySet(TypeIdx),
     ArrayNewFixed { type_idx: TypeIdx, len: u32 },
 
     Call(FuncIdx),

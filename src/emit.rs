@@ -102,6 +102,7 @@ impl ir::Instruction {
             ir::Instruction::LocalSet(idx) => Instruction::LocalSet(*idx),
             ir::Instruction::Drop => Instruction::Drop,
             ir::Instruction::ArrayGet(idx) => Instruction::ArrayGet(*idx),
+            ir::Instruction::ArraySet(idx) => Instruction::ArraySet(*idx),
             ir::Instruction::ArrayNewFixed { type_idx, len } => Instruction::ArrayNewFixed {
                 array_type_index: *type_idx,
                 array_size: *len,

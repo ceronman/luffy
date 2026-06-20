@@ -353,11 +353,13 @@ impl Resolver {
                 (*ret).clone()
             }
             ExprKind::Assignment { target, value } => {
-                self.expr(target, func_id, None)?;
-                let ExprKind::Variable { name } = &target.kind else {
-                    return resolve_err(target.node.span, "Invalid assignment target");
+                let target_ty = self.expr(target, func_id, None)?;
+                // TODO: Make a more sophisticated LValue logic?
+                match &target.kind {
+                    ExprKind::Variable { .. } => {}
+                    ExprKind::Index { .. } => {}
+                    _ => return resolve_err(target.node.span, "Invalid assignment target"),
                 };
-                let target_ty = self.lookup_ty(name)?;
                 let expr_ty = self.expr(value, func_id, Some(&target_ty))?;
                 unify_ty(value.node.span, &target_ty, &expr_ty)?;
                 Type::Unit

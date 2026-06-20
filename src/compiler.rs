@@ -1,8 +1,6 @@
 #[cfg(test)]
 mod test;
 
-use crate::ast::ItemKind;
-use crate::ir::StorageType;
 use crate::semantic::{Declaration, DeclarationId, DeclarationKind, Semantics, Type};
 use crate::{ast, ir};
 use std::collections::{HashMap, VecDeque};
@@ -51,7 +49,7 @@ impl Compiler {
         for declaration in &self.semantics.declarations {
             if let DeclarationKind::Import = &declaration.kind {
                 let func_idx = self.func_addresses.len() as ir::FuncIdx;
-                let ty_idx = self.wasm_types.get_or_create(&declaration.ty);
+                let ty_idx = self.wasm_types.type_idx(&declaration.ty);
                 self.func_addresses.insert(
                     declaration.id,
                     FuncAddress {
@@ -73,17 +71,17 @@ impl Compiler {
             match &declaration.kind {
                 DeclarationKind::Function => {
                     let idx = self.func_addresses.len() as ir::FuncIdx;
-                    let ty_idx = self.wasm_types.get_or_create(&declaration.ty);
+                    let ty_idx = self.wasm_types.type_idx(&declaration.ty);
                     self.func_addresses
                         .insert(declaration.id, FuncAddress { idx, ty_idx });
                 }
                 DeclarationKind::Local(fn_id) => {
                     let ty = match &declaration.ty {
                         Type::Array { .. } => {
-                            let ty_idx = self.wasm_types.get_or_create(&declaration.ty);
+                            let ty_idx = self.wasm_types.type_idx(&declaration.ty);
                             ir::ValType::Ref(ty_idx)
                         }
-                        _ => declaration.ty.lower_to_val_type(),
+                        _ => self.wasm_types.val_ty(&declaration.ty),
                     };
                     let idx = *local_indices
                         .entry(*fn_id)
@@ -97,7 +95,7 @@ impl Compiler {
         }
 
         for item in &module.items {
-            if let ItemKind::Function {
+            if let ast::ItemKind::Function {
                 export,
                 name,
                 params,
@@ -238,7 +236,7 @@ impl Compiler {
             }
             ast::ExprKind::Collection { elements } => {
                 let ty = self.node_type(expr.node);
-                let type_idx = self.wasm_types.get(&ty);
+                let type_idx = self.wasm_types.type_idx(&ty);
 
                 for element in elements {
                     self.expr(ins, element);
@@ -335,17 +333,26 @@ impl Compiler {
                 }
                 ins.push(ir::Instruction::Call(address.idx));
             }
-            ast::ExprKind::Assignment { target, value } => {
-                let ast::ExprKind::Variable { name } = &target.kind else {
-                    panic!("Invalid assignment target");
-                };
-                let address = self.local_addr(name);
-                self.expr(ins, value);
-                ins.push(ir::Instruction::LocalSet(address.idx));
-            }
+            ast::ExprKind::Assignment { target, value } => match &target.kind {
+                ast::ExprKind::Variable { name } => {
+                    let address = self.local_addr(name);
+                    self.expr(ins, value);
+                    ins.push(ir::Instruction::LocalSet(address.idx));
+                }
+                ast::ExprKind::Index { expr, index } => {
+                    let ty = self.node_type(expr.node);
+                    let ty_idx = self.wasm_types.type_idx(&ty);
+                    self.expr(ins, expr);
+                    self.expr(ins, index);
+                    ins.push(ir::Instruction::I32WrapI64);
+                    self.expr(ins, value);
+                    ins.push(ir::Instruction::ArraySet(ty_idx));
+                }
+                _ => panic!("Invalid assignment target"),
+            },
             ast::ExprKind::Index { expr, index } => {
                 let ty = self.node_type(expr.node);
-                let ty = self.wasm_types.get(&ty);
+                let ty = self.wasm_types.type_idx(&ty);
                 self.expr(ins, expr);
                 self.expr(ins, index);
                 ins.push(ir::Instruction::I32WrapI64);
@@ -363,7 +370,7 @@ impl Compiler {
                 let block_type = if ty.is_unit() || ty.is_never() {
                     ir::BlockType::Empty
                 } else {
-                    ir::BlockType::Result(ty.lower_to_val_type())
+                    ir::BlockType::Result(self.wasm_types.val_ty(&ty))
                 };
                 ins.push(ir::Instruction::If(block_type));
                 self.loops.enter_frame();
@@ -477,19 +484,52 @@ struct Types {
 }
 
 impl Types {
-    fn get_or_create(&mut self, ty: &Type) -> ir::TypeIdx {
+    fn val_ty(&mut self, ty: &Type) -> ir::ValType {
+        match ty {
+            Type::Int => ir::ValType::I64,
+            Type::Float => ir::ValType::F64,
+            Type::Bool => ir::ValType::I32,
+            Type::Array { .. } => {
+                let wasm_ty = self.wasm_ty(ty);
+                let ty_idx = self.get_or_create(ty, wasm_ty);
+                ir::ValType::Ref(ty_idx)
+            }
+            _ => todo!(),
+        }
+    }
+
+    fn wasm_ty(&mut self, ty: &Type) -> ir::Type {
+        match ty {
+            Type::Function { params, ret } => {
+                let params = params.iter().map(|p| self.val_ty(p)).collect::<Vec<_>>();
+                let results = if let Type::Unit = ret.as_ref() {
+                    vec![]
+                } else {
+                    vec![self.val_ty(ret)]
+                };
+                ir::Type::Function { params, results }
+            }
+            Type::Array { ty } => ir::Type::Array {
+                ty: ir::StorageType::Val(self.val_ty(ty)),
+            },
+            _ => panic!("Type is not part of types section"),
+        }
+    }
+
+    fn get_or_create(&mut self, ty: &Type, wasm_ty: ir::Type) -> ir::TypeIdx {
         if let Some(idx) = self.unique_types.get(ty) {
             return *idx;
         }
 
         let idx = self.types.len() as ir::TypeIdx;
-        self.types.push(ty.lower_to_type());
+        self.types.push(wasm_ty);
         self.unique_types.insert(ty.clone(), idx);
         idx
     }
 
-    fn get(&self, ty: &Type) -> ir::TypeIdx {
-        self.unique_types.get(ty).cloned().expect("Unknown type")
+    fn type_idx(&mut self, ty: &Type) -> ir::TypeIdx {
+        let wasm_ty = self.wasm_ty(ty);
+        self.get_or_create(ty, wasm_ty)
     }
 }
 
@@ -537,38 +577,6 @@ impl Loops {
             .expect("`continue` outside of a loop")
             .continue_target;
         (self.depth - 1) - target
-    }
-}
-
-impl Type {
-    fn lower_to_val_type(&self) -> ir::ValType {
-        match self {
-            Type::Int => ir::ValType::I64,
-            Type::Float => ir::ValType::F64,
-            Type::Bool => ir::ValType::I32,
-            _ => todo!(),
-        }
-    }
-
-    fn lower_to_type(&self) -> ir::Type {
-        match self {
-            Type::Function { params, ret } => {
-                let params = params
-                    .iter()
-                    .map(|p| p.lower_to_val_type())
-                    .collect::<Vec<_>>();
-                let results = if let Type::Unit = ret.as_ref() {
-                    vec![]
-                } else {
-                    vec![ret.lower_to_val_type()]
-                };
-                ir::Type::Function { params, results }
-            }
-            Type::Array { ty } => ir::Type::Array {
-                ty: StorageType::Val(ty.lower_to_val_type()),
-            },
-            _ => panic!("Type is not part of types section"),
-        }
     }
 }
 

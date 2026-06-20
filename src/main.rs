@@ -14,10 +14,9 @@ fn main() {
         import fn print_int(x Int)
 
         export fn main() {
-            let foo Array[Int] = [10, 20, 30]
-            print_int(foo[0])
-            print_int(foo[1])
-            print_int(foo[2])
+            let foo Array[Array[Int]] = [[1, 2], [10, 20], [100, 200]]
+            print_int(foo[0][0])
+            print_int(foo[2][1])
         }
     "#;
 
