@@ -13,10 +13,9 @@ fn main() {
     let code = r#"
         import fn print_int(x Int)
 
+        fn foo() Int: 1
         export fn main() {
-            let foo Array[Array[Int]] = [[1, 2], [10, 20], [100, 200]]
-            print_int(foo[0][0])
-            print_int(foo[2][1])
+            if true: foo()
         }
     "#;
 

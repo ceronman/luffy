@@ -378,6 +378,12 @@ impl Compiler {
                 if let Some(else_branch) = else_branch {
                     ins.push(ir::Instruction::Else);
                     self.branch(ins, else_branch);
+                } else {
+                    // TODO: re-think when to drop and when not to drop.
+                    let then_ty = self.node_type(then_branch.node);
+                    if !then_ty.is_unit() && !then_ty.is_never() {
+                        ins.push(ir::Instruction::Drop);
+                    }
                 }
                 ins.push(ir::Instruction::End);
                 self.loops.exit_frame();

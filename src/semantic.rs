@@ -388,16 +388,12 @@ impl Resolver {
             } => {
                 self.check_condition(condition, func_id, "if")?;
                 let then_ty = self.block(then_branch, func_id, expected_ty)?;
-                let else_ty = if let Some(else_branch) = else_branch {
-                    self.block(else_branch, func_id, expected_ty)?
+                if let Some(else_branch) = else_branch {
+                    let else_ty = self.block(else_branch, func_id, expected_ty)?;
+                    unify_ty(else_branch.node.span, &then_ty, &else_ty)?
                 } else {
                     Type::Unit
-                };
-                let span = else_branch
-                    .as_ref()
-                    .map(|e| e.node.span)
-                    .unwrap_or(expr.node.span);
-                unify_ty(span, &then_ty, &else_ty)?
+                }
             }
             ExprKind::Break => {
                 if self.loop_depth == 0 {
@@ -452,6 +448,7 @@ impl Resolver {
             BlockKind::Expr { expr } => self.expr(expr, func_id, expected_ty)?,
         };
         self.end_scope();
+        self.semantics.expr_types.insert(block.node.id, ty.clone());
         Ok(ty)
     }
 
@@ -462,8 +459,13 @@ impl Resolver {
         expected_ty: Option<&Type>,
     ) -> Result<Type> {
         let mut result = Type::Unit;
-        for stmt in statements {
+        for (i, stmt) in statements.iter().enumerate() {
             if let StmtKind::ExprStmt { expr } = &stmt.kind {
+                let expected_ty = if i == statements.len() - 1 {
+                    expected_ty
+                } else {
+                    None
+                };
                 result = self.expr(expr, func_id, expected_ty)?
             } else {
                 self.stmt(stmt, func_id)?;
