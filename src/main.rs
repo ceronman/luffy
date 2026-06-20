@@ -11,11 +11,13 @@ pub mod source;
 
 fn main() {
     let code = r#"
-        fn f(a Int) {
-            while a > 0 {
-                if a > 5 { break }
-                a = a - 1
-            }
+        import fn print_int(x Int)
+
+        export fn main() {
+            let foo Array[Int] = [10, 20, 30]
+            print_int(foo[0])
+            print_int(foo[1])
+            print_int(foo[2])
         }
     "#;
 

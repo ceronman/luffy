@@ -102,7 +102,10 @@ impl ir::Instruction {
             ir::Instruction::LocalSet(idx) => Instruction::LocalSet(*idx),
             ir::Instruction::Drop => Instruction::Drop,
             ir::Instruction::ArrayGet(idx) => Instruction::ArrayGet(*idx),
-
+            ir::Instruction::ArrayNewFixed { type_idx, len } => Instruction::ArrayNewFixed {
+                array_type_index: *type_idx,
+                array_size: *len,
+            },
             ir::Instruction::I64Const(v) => Instruction::I64Const(*v),
             ir::Instruction::I64Add => Instruction::I64Add,
             ir::Instruction::I64Sub => Instruction::I64Sub,
@@ -131,6 +134,7 @@ impl ir::Instruction {
 
             ir::Instruction::I32Const(v) => Instruction::I32Const(*v),
             ir::Instruction::I32Eqz => Instruction::I32Eqz,
+            ir::Instruction::I32WrapI64 => Instruction::I32WrapI64,
             ir::Instruction::If(block_type) => Instruction::If(block_type.encode()),
             ir::Instruction::Else => Instruction::Else,
             ir::Instruction::Block(block_type) => Instruction::Block(block_type.encode()),

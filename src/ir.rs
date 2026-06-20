@@ -52,6 +52,7 @@ pub enum BlockType {
 pub enum Instruction {
     I32Const(i32),
     I32Eqz,
+    I32WrapI64,
     If(BlockType),
     Else,
     Block(BlockType),
@@ -91,7 +92,10 @@ pub enum Instruction {
     LocalGet(LocalIdx),
     LocalSet(LocalIdx),
     Drop,
+
     ArrayGet(TypeIdx),
+    ArrayNewFixed { type_idx: TypeIdx, len: u32 },
+
     Call(FuncIdx),
     End,
 }

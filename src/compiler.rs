@@ -14,7 +14,7 @@ struct Compiler {
     local_addresses: HashMap<DeclarationId, LocalAddress>, // TODO: Unify both addresses?
     func_addresses: HashMap<DeclarationId, FuncAddress>,
     loops: Loops,
-    types: Types,
+    wasm_types: Types,
 }
 
 #[derive(Clone, Copy)]
@@ -51,7 +51,7 @@ impl Compiler {
         for declaration in &self.semantics.declarations {
             if let DeclarationKind::Import = &declaration.kind {
                 let func_idx = self.func_addresses.len() as ir::FuncIdx;
-                let ty_idx = self.types.get_or_create(&declaration.ty);
+                let ty_idx = self.wasm_types.get_or_create(&declaration.ty);
                 self.func_addresses.insert(
                     declaration.id,
                     FuncAddress {
@@ -73,14 +73,14 @@ impl Compiler {
             match &declaration.kind {
                 DeclarationKind::Function => {
                     let idx = self.func_addresses.len() as ir::FuncIdx;
-                    let ty_idx = self.types.get_or_create(&declaration.ty);
+                    let ty_idx = self.wasm_types.get_or_create(&declaration.ty);
                     self.func_addresses
                         .insert(declaration.id, FuncAddress { idx, ty_idx });
                 }
                 DeclarationKind::Local(fn_id) => {
                     let ty = match &declaration.ty {
                         Type::Array { .. } => {
-                            let ty_idx = self.types.get_or_create(&declaration.ty);
+                            let ty_idx = self.wasm_types.get_or_create(&declaration.ty);
                             ir::ValType::Ref(ty_idx)
                         }
                         _ => declaration.ty.lower_to_val_type(),
@@ -119,7 +119,7 @@ impl Compiler {
             }
         }
         ir::Module {
-            types: self.types.types.clone(),
+            types: self.wasm_types.types.clone(),
             imports,
             functions,
             exports,
@@ -236,8 +236,17 @@ impl Compiler {
                 let address = self.local_addr(name);
                 ins.push(ir::Instruction::LocalGet(address.idx))
             }
-            ast::ExprKind::Collection { .. } => {
-                todo!()
+            ast::ExprKind::Collection { elements } => {
+                let ty = self.node_type(expr.node);
+                let type_idx = self.wasm_types.get(&ty);
+
+                for element in elements {
+                    self.expr(ins, element);
+                }
+                ins.push(ir::Instruction::ArrayNewFixed {
+                    type_idx,
+                    len: elements.len() as u32,
+                });
             }
             ast::ExprKind::Unary { op, expr } => {
                 let ty = self.node_type(expr.node);
@@ -336,9 +345,10 @@ impl Compiler {
             }
             ast::ExprKind::Index { expr, index } => {
                 let ty = self.node_type(expr.node);
-                let ty = self.types.get(&ty);
+                let ty = self.wasm_types.get(&ty);
                 self.expr(ins, expr);
                 self.expr(ins, index);
+                ins.push(ir::Instruction::I32WrapI64);
                 ins.push(ir::Instruction::ArrayGet(ty));
             }
             ast::ExprKind::If {
