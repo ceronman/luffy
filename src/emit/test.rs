@@ -668,3 +668,204 @@ fn return_value_from_if_else() {
     5
     ");
 }
+
+// ── Array construction and indexing execution ─────────────────────────────────
+
+#[test]
+fn array_construct_and_index() {
+    let body = r#"
+        let a Array[Int] = [10, 20, 30]
+        print_int(a[0])
+        print_int(a[1])
+        print_int(a[2])
+    "#;
+    assert_snapshot!(run_main(body), @"
+    10
+    20
+    30
+    ");
+}
+
+#[test]
+fn array_index_with_expression_index() {
+    // The index can be any Int expression, including a variable and arithmetic.
+    let body = r#"
+        let a Array[Int] = [5, 6, 7]
+        let i Int = 1
+        print_int(a[i])
+        print_int(a[i + 1])
+    "#;
+    assert_snapshot!(run_main(body), @"
+    6
+    7
+    ");
+}
+
+#[test]
+fn array_write_through_index() {
+    // Writing through an index mutates the array in place.
+    let body = r#"
+        let a Array[Int] = [1, 2, 3]
+        a[1] = 99
+        print_int(a[0])
+        print_int(a[1])
+        print_int(a[2])
+    "#;
+    assert_snapshot!(run_main(body), @"
+    1
+    99
+    3
+    ");
+}
+
+#[test]
+fn array_of_floats() {
+    let body = r#"
+        let a Array[Float] = [1.5, 2.5]
+        print_float(a[0])
+        print_float(a[1])
+    "#;
+    assert_snapshot!(run_main(body), @"
+    1.5
+    2.5
+    ");
+}
+
+#[test]
+fn array_of_bools() {
+    let body = r#"
+        let a Array[Bool] = [true, false]
+        print_bool(a[0])
+        print_bool(a[1])
+    "#;
+    assert_snapshot!(run_main(body), @"
+    true
+    false
+    ");
+}
+
+// ── Nested arrays ─────────────────────────────────────────────────────────────
+
+#[test]
+fn nested_array_read() {
+    let body = r#"
+        let a Array[Array[Int]] = [[1, 2], [3, 4], [5, 6]]
+        print_int(a[0][0])
+        print_int(a[1][1])
+        print_int(a[2][0])
+    "#;
+    assert_snapshot!(run_main(body), @"
+    1
+    4
+    5
+    ");
+}
+
+#[test]
+fn nested_array_write() {
+    // Both writing a single inner element and replacing a whole inner array.
+    let body = r#"
+        let a Array[Array[Int]] = [[1, 2], [3, 4]]
+        a[0][1] = 88
+        a[1] = [7, 8]
+        print_int(a[0][1])
+        print_int(a[1][0])
+        print_int(a[1][1])
+    "#;
+    assert_snapshot!(run_main(body), @"
+    88
+    7
+    8
+    ");
+}
+
+// ── Arrays through function boundaries ─────────────────────────────────────────
+
+#[test]
+fn array_as_parameter() {
+    let src = r#"
+        import fn print_int(x Int)
+        fn first(xs Array[Int]) Int { return xs[0] }
+        fn second(xs Array[Int]) Int: xs[1]
+        export fn main() {
+            let a Array[Int] = [11, 22, 33]
+            print_int(first(a))
+            print_int(second(a))
+        }
+    "#;
+    assert_snapshot!(compile_and_run(src), @"
+    11
+    22
+    ");
+}
+
+#[test]
+fn array_returned_from_function() {
+    let src = r#"
+        import fn print_int(x Int)
+        fn make() Array[Int] { return [100, 200, 300] }
+        export fn main() {
+            let a Array[Int] = make()
+            print_int(a[0])
+            print_int(a[2])
+        }
+    "#;
+    assert_snapshot!(compile_and_run(src), @"
+    100
+    300
+    ");
+}
+
+#[test]
+fn collection_literal_as_call_argument() {
+    let src = r#"
+        import fn print_int(x Int)
+        fn sum3(xs Array[Int]) Int { return xs[0] + xs[1] + xs[2] }
+        export fn main() {
+            print_int(sum3([4, 5, 6]))
+        }
+    "#;
+    assert_snapshot!(compile_and_run(src), @"15");
+}
+
+// ── Arrays combined with loops ────────────────────────────────────────────────
+
+#[test]
+fn array_filled_and_read_in_loops() {
+    // Fill an array with i*i in one loop, then read it back in another.
+    let body = r#"
+        let a Array[Int] = [0, 0, 0, 0, 0]
+        let i Int = 0
+        while i < 5 {
+            a[i] = i * i
+            i = i + 1
+        }
+        i = 0
+        while i < 5 {
+            print_int(a[i])
+            i = i + 1
+        }
+    "#;
+    assert_snapshot!(run_main(body), @"
+    0
+    1
+    4
+    9
+    16
+    ");
+}
+
+#[test]
+fn array_summed_in_loop() {
+    let body = r#"
+        let a Array[Int] = [1, 2, 3, 4]
+        let total Int = 0
+        let i Int = 0
+        while i < 4 {
+            total = total + a[i]
+            i = i + 1
+        }
+        print_int(total)
+    "#;
+    assert_snapshot!(run_main(body), @"10");
+}

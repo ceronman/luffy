@@ -993,3 +993,144 @@ fn error_collection_element_type_mismatch_with_call_and_return() {
                                                ^^^^ ─── Type mismatch: expected 'Int', found 'Bool'
     ");
 }
+
+// ── Array index assignment (writing through an index) ─────────────────────────
+//
+// `arr[i] = v` is an assignment whose target is an `Index`. The index target
+// resolves to the element type, and the assigned value must match it. The whole
+// assignment has type `Unit`.
+
+#[test]
+fn valid_array_index_assignment() {
+    assert_snapshot!(check("fn f(x Array[Int]) { x[0] = 1 }"), @"<no error>");
+}
+
+#[test]
+fn valid_array_index_assignment_with_variable_index() {
+    // The index may be any `Int` expression.
+    assert_snapshot!(check("fn f(x Array[Int], i Int) { x[i] = i }"), @"<no error>");
+}
+
+#[test]
+fn valid_nested_array_index_assignment() {
+    // Writing through two levels of indexing: the target type is the innermost
+    // element type (`Int`).
+    assert_snapshot!(check("fn f(x Array[Array[Int]]) { x[0][1] = 5 }"), @"<no error>");
+}
+
+#[test]
+fn valid_array_index_assignment_from_collection() {
+    // The value written to an `Array[Array[Int]]` element is itself a collection
+    // that unifies with `Array[Int]`.
+    assert_snapshot!(check("fn f(x Array[Array[Int]]) { x[0] = [1, 2] }"), @"<no error>");
+}
+
+#[test]
+fn error_array_index_assignment_value_type_mismatch() {
+    // The written value must match the element type.
+    let src = r#"fn f(x Array[Int]) {
+        x[0] = true
+    }"#;
+    assert_snapshot!(check(src), @r"
+    x[0] = true
+           ^^^^ ─── Type mismatch: expected 'Int', found 'Bool'
+    ");
+}
+
+#[test]
+fn error_array_index_assignment_on_non_array() {
+    // Indexing a non-array on the left of an assignment is rejected when the
+    // index target is resolved.
+    let src = r#"fn f() {
+        let x Int = 1
+        x[0] = 5
+    }"#;
+    assert_snapshot!(check(src), @r"
+    x[0] = 5
+    ^ ─── Type mismatch: expected Array, found 'Int'
+    ");
+}
+
+#[test]
+fn error_array_index_assignment_non_int_index() {
+    let src = r#"fn f(x Array[Int]) {
+        x[true] = 1
+    }"#;
+    assert_snapshot!(check(src), @r"
+    x[true] = 1
+      ^^^^ ─── Type mismatch: index expected as Int, found 'Bool'
+    ");
+}
+
+// ── Arrays as parameters / return values / call arguments ─────────────────────
+
+#[test]
+fn valid_array_returned_from_function() {
+    assert_snapshot!(check("fn make() Array[Int]: [1, 2, 3]"), @"<no error>");
+}
+
+#[test]
+fn valid_empty_array_returned_from_function() {
+    assert_snapshot!(check("fn make() Array[Int]: []"), @"<no error>");
+}
+
+#[test]
+fn valid_array_param_indexed_in_short_body() {
+    assert_snapshot!(check("fn first(xs Array[Int]) Int: xs[0]"), @"<no error>");
+}
+
+#[test]
+fn valid_collection_as_call_argument() {
+    let src = r#"
+        import fn sum(xs Array[Int]) Int
+        fn f() Int { return sum([1, 2, 3]) }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn valid_array_variable_as_call_argument() {
+    let src = r#"
+        import fn sum(xs Array[Int]) Int
+        fn f(xs Array[Int]) Int { return sum(xs) }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+// ── Arrays of every element type ──────────────────────────────────────────────
+
+#[test]
+fn valid_array_of_bools() {
+    assert_snapshot!(check("fn f() { let x Array[Bool] = [true, false] }"), @"<no error>");
+}
+
+#[test]
+fn valid_index_of_bool_array_is_bool() {
+    assert_snapshot!(check("fn f(x Array[Bool]) Bool: x[0]"), @"<no error>");
+}
+
+#[test]
+fn valid_deeply_nested_array_index() {
+    // Three levels of nesting resolve down to the innermost `Int`.
+    assert_snapshot!(check("fn f(x Array[Array[Array[Int]]]) Int: x[0][1][2]"), @"<no error>");
+}
+
+#[test]
+fn error_over_indexing_past_element_type() {
+    // `x[0]` is already an `Int`; indexing it again is an error reported at the
+    // inner `x[0]` operand.
+    let src = r#"fn f(x Array[Int]) Int {
+        return x[0][1]
+    }"#;
+    assert_snapshot!(check(src), @r"
+    return x[0][1]
+           ^^^^ ─── Type mismatch: expected Array, found 'Int'
+    ");
+}
+
+// TODO ── Known gap: equality on arrays type-checks but is not lowered ───────────────
+
+#[test]
+fn array_equality_is_accepted_by_typechecker() {
+    assert_snapshot!(check("fn f(a Array[Int], b Array[Int]) Bool: a == b"), @"<no error>");
+}

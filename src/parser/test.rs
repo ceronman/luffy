@@ -2541,3 +2541,57 @@ fn error_collection_unclosed_bracket() {
                      ^ ─── Expected `]`, got `}`
     ");
 }
+
+#[test]
+fn nested_index_as_assignment_target() {
+    // Writing through two index levels: `a[0][1] = 2`.
+    assert_snapshot!(parse_expr("a[0][1] = 2"), @r"
+    Assign
+    ├── Index
+    │   ├── Index
+    │   │   ├── Var [a]
+    │   │   └── Int[0]
+    │   └── Int[1]
+    └── Int[2]
+    ");
+}
+
+// ── Array syntax: newline handling ────────────────────────────────────────────
+
+#[test]
+fn collection_spanning_lines() {
+    // Newlines inside the `[ ... ]` element list are insignificant, so this
+    // parses the same as the single-line `[1, 2, 3]`.
+    assert_snapshot!(parse_expr("[\n    1,\n    2,\n    3\n]"), @"
+    Collection
+    ├── Int[1]
+    ├── Int[2]
+    └── Int[3]
+    ");
+}
+
+#[test]
+fn index_subscript_spanning_lines() {
+    // Newlines inside the `[ ... ]` subscript are insignificant, so this parses
+    // the same as the single-line `a[i + 1]`.
+    assert_snapshot!(parse_expr("a[\n    i + 1\n]"), @"
+    Index
+    ├── Var [a]
+    └── Binary [+]
+        ├── Var [i]
+        └── Int[1]
+    ");
+}
+
+#[test]
+fn index_continues_across_newline_before_bracket() {
+    // Unlike `(` (which starts a new statement at the beginning of a line), a
+    // `[` continues the previous expression as an index even across a newline,
+    // just like a binary operator. So `a\n[0]` is a single index expression
+    // (equal to `a[0]`), NOT two statements.
+    assert_snapshot!(parse_stmt("a\n[0]"), @"
+    Index
+    ├── Var [a]
+    └── Int[0]
+    ");
+}

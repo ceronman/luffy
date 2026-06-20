@@ -40,6 +40,8 @@ let x Color = 1   // error: Unknown type
 
 Besides the three primitives, two further types have names you can write but no literal values: `Unit` (the "no value" type of functions that return nothing) and `Never` (the type of expressions like `return` that never produce a value — see the section on `return` below).
 
+Luffy also has one compound type, `Array[T]`, a fixed-size array of elements of type `T`. It is covered in the [Arrays](#arrays) section below.
+
 ### Integer literals
 
 `Int` literals can be written in four bases. The `0x`/`0o`/`0b` prefixes and the hexadecimal digits `a`–`f` are case-insensitive:
@@ -88,12 +90,19 @@ let avo Float = 6.022_140_76e23
 
 ## Variables
 
-Declare a variable with `let`. The type annotation is required, and an initializer must be provided.
+Declare a variable with `let`. The type annotation is required; the initializer is optional.
 
 ```luffy
 let x Int = 10
 let pi Float = 3.14
 let flag Bool = true
+```
+
+You may omit the initializer to declare a binding and assign it later. Reading a variable before it has been assigned is undefined, so assign it before use:
+
+```luffy
+let x Int       // declared, not yet initialized
+x = 7           // assigned here
 ```
 
 Reassign a variable with `=`:
@@ -358,10 +367,10 @@ if x > 0 {
 }
 ```
 
-But when `if` is used as an expression, the `else` branch is mandatory — there would otherwise be no value when the condition is false:
+But when `if` is used as an expression, the `else` branch is mandatory — there would otherwise be no value when the condition is false. A missing `else` is treated as producing `Unit`, so omitting it reports a type mismatch against the then-branch's type:
 
 ```luffy
-let x Int = if a > 0: 0   // error: 'if' must have both main and 'else' branches when used as an expression
+let x Int = if a > 0: 0   // error: Type mismatch: expected 'Int', found 'Unit'
 ```
 
 This mirrors how `if` works in Kotlin.
@@ -410,6 +419,104 @@ while i < 10 {
 Both are *expressions* of type `Never` (see below), so they can appear anywhere an expression can — including a colon branch as above. Using `break` or `continue` outside a loop is a compile error.
 
 Note the usual `continue` caveat: make sure the loop still makes progress before the `continue`, or it will spin forever. Above, `i` is incremented before any `continue`.
+
+---
+
+## Arrays
+
+`Array[T]` is a fixed-size sequence of values that all share the element type `T`. The element type is written as a bracketed argument, and it can be any type — including another array, giving you nested arrays:
+
+```luffy
+let xs Array[Int]          // an array of Int
+let grid Array[Array[Int]] // an array of arrays of Int
+```
+
+### Creating arrays
+
+An array value is written as a comma-separated list of expressions between square brackets. This is a *collection literal*. Its element type is taken from the type it is assigned to, so the binding (or parameter, or return) must be annotated:
+
+```luffy
+let xs Array[Int] = [1, 2, 3]
+let ys Array[Float] = [1.5, 2.5]
+let empty Array[Int] = []          // an empty array is allowed
+```
+
+All elements must match the declared element type. Mixing types is an error:
+
+```luffy
+let xs Array[Int] = [1, 2.0]   // error: expected 'Int', found 'Float'
+```
+
+A bare collection literal with no expected type cannot be inferred, so `[1, 2, 3]` on its own (with nothing telling the compiler what kind of array it is) is an error. Give it a target type via a `let`, a parameter, a return type, or a call argument.
+
+### Indexing
+
+Read an element with `arr[i]`. The index is an `Int` expression and the result has the element type:
+
+```luffy
+let xs Array[Int] = [10, 20, 30]
+let first Int = xs[0]
+let n Int = xs[1 + 1]   // the index can be any Int expression
+```
+
+Indexing binds tighter than arithmetic, so `xs[0] + 1` reads `xs[0]` and then adds `1`. Indexing chains for nested arrays:
+
+```luffy
+let grid Array[Array[Int]] = [[1, 2], [3, 4]]
+let x Int = grid[1][0]   // 3
+```
+
+Indexing a non-array, or using a non-`Int` index, is a type error. Indexing out of bounds is a runtime trap.
+
+### Assigning through an index
+
+An index expression can be the target of an assignment, which writes a new value into that slot. The assigned value must match the element type, and like every assignment the whole expression has type `Unit`:
+
+```luffy
+let xs Array[Int] = [1, 2, 3]
+xs[1] = 99            // xs is now [1, 99, 3]
+
+let grid Array[Array[Int]] = [[1, 2], [3, 4]]
+grid[0][1] = 88       // write a single inner element
+grid[1] = [7, 8]      // replace a whole inner array
+```
+
+### Arrays and functions
+
+Arrays can be passed to and returned from functions like any other value:
+
+```luffy
+fn first(xs Array[Int]) Int: xs[0]
+
+fn make() Array[Int] {
+    return [1, 2, 3]
+}
+```
+
+Putting it together — building an array in a loop and summing it:
+
+```luffy
+import fn print_int(x Int)
+
+export fn main() {
+    let xs Array[Int] = [0, 0, 0, 0, 0]
+    let i Int = 0
+    while i < 5 {
+        xs[i] = i * i
+        i = i + 1
+    }
+
+    let total Int = 0
+    i = 0
+    while i < 5 {
+        total = total + xs[i]
+        i = i + 1
+    }
+    print_int(total)   // 0 + 1 + 4 + 9 + 16 = 30
+}
+```
+
+> Note: arrays are compared by reference identity only at the IR level, and equality (`==`/`!=`) on arrays is not currently supported by the code generator. Compare individual elements instead.
 
 ---
 

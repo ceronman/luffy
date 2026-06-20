@@ -965,6 +965,147 @@ fn return_emits_return_instruction() {
     ");
 }
 
+// ── Array compilation ─────────────────────────────────────────────────────────
+
+#[test]
+fn array_construction() {
+    // A collection literal lowers to `array.new_fixed` with the element count;
+    // the function result is a reference to the array type.
+    assert_snapshot!(compile_to_wat("fn make() Array[Int] { return [1, 2, 3] }"), @"
+    (module
+      (type (;0;) (array (mut i64)))
+      (type (;1;) (func (result (ref null 0))))
+      (func (;0;) (type 1) (result (ref null 0))
+        i64.const 1
+        i64.const 2
+        i64.const 3
+        array.new_fixed 0 3
+        return
+      )
+    )
+    ");
+}
+
+#[test]
+fn empty_collection_is_zero_length_array() {
+    // An empty collection still constructs an array, with length 0.
+    assert_snapshot!(compile_to_wat("fn make() Array[Int]: []"), @"
+    (module
+      (type (;0;) (array (mut i64)))
+      (type (;1;) (func (result (ref null 0))))
+      (func (;0;) (type 1) (result (ref null 0))
+        array.new_fixed 0 0
+      )
+    )
+    ");
+}
+
+#[test]
+fn array_index_read() {
+    // Reading `xs[0]` lowers to: push the array, push the index, wrap the i64
+    // index to i32, then `array.get`.
+    assert_snapshot!(compile_to_wat("fn get(xs Array[Int]) Int { return xs[0] }"), @"
+    (module
+      (type (;0;) (array (mut i64)))
+      (type (;1;) (func (param (ref null 0)) (result i64)))
+      (func (;0;) (type 1) (param (ref null 0)) (result i64)
+        local.get 0
+        i64.const 0
+        i32.wrap_i64
+        array.get 0
+        return
+      )
+    )
+    ");
+}
+
+#[test]
+fn array_index_write() {
+    // Writing `xs[0] = 9` lowers to: push the array, push the index, wrap to
+    // i32, push the value, then `array.set` (no trailing drop, since it is Unit).
+    assert_snapshot!(compile_to_wat("fn set(xs Array[Int]) { xs[0] = 9 }"), @"
+    (module
+      (type (;0;) (array (mut i64)))
+      (type (;1;) (func (param (ref null 0))))
+      (func (;0;) (type 1) (param (ref null 0))
+        local.get 0
+        i64.const 0
+        i32.wrap_i64
+        i64.const 9
+        array.set 0
+      )
+    )
+    ");
+}
+
+#[test]
+fn nested_array_construction() {
+    // `Array[Array[Int]]` produces two distinct array types: the inner `Int`
+    // array and the outer array-of-arrays.
+    assert_snapshot!(compile_to_wat("fn make() Array[Array[Int]]: [[1, 2], [3, 4]]"), @"
+    (module
+      (type (;0;) (array (mut i64)))
+      (type (;1;) (array (mut (ref null 0))))
+      (type (;2;) (func (result (ref null 1))))
+      (func (;0;) (type 2) (result (ref null 1))
+        i64.const 1
+        i64.const 2
+        array.new_fixed 0 2
+        i64.const 3
+        i64.const 4
+        array.new_fixed 0 2
+        array.new_fixed 1 2
+      )
+    )
+    ");
+}
+
+#[test]
+fn nested_array_read() {
+    // `xs[0][1]` reads through two array layers.
+    assert_snapshot!(compile_to_wat("fn get(xs Array[Array[Int]]) Int { return xs[0][1] }"), @"
+    (module
+      (type (;0;) (array (mut i64)))
+      (type (;1;) (array (mut (ref null 0))))
+      (type (;2;) (func (param (ref null 1)) (result i64)))
+      (func (;0;) (type 2) (param (ref null 1)) (result i64)
+        local.get 0
+        i64.const 0
+        i32.wrap_i64
+        array.get 1
+        i64.const 1
+        i32.wrap_i64
+        array.get 0
+        return
+      )
+    )
+    ");
+}
+
+#[test]
+fn array_index_read_as_statement_drops_value() {
+    // Used in statement position, an index read leaves a value that must be
+    // dropped to keep the stack balanced.
+    let src = r#"
+        fn f(xs Array[Int]) {
+            xs[0]
+        }
+    "#;
+    assert_snapshot!(compile_to_wat(src), @"
+    (module
+      (type (;0;) (array (mut i64)))
+      (type (;1;) (func (param (ref null 0))))
+      (func (;0;) (type 1) (param (ref null 0))
+        local.get 0
+        i64.const 0
+        i32.wrap_i64
+        array.get 0
+        drop
+      )
+    )
+    ");
+}
+
 #[test]
 fn early_return_in_if_branch() {
     // The early `return` inside the `if` returns from the function; the trailing

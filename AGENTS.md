@@ -111,11 +111,13 @@ enum BlockKind {
 
 ```rust
 enum StmtKind {
-    Declaration { name, ty: TypeRef, initializer: Expr },   // let x T = expr
-    While       { condition: Expr, body: Box<Block> },      // while cond { ... } / while cond: expr
+    Declaration { name, ty: TypeRef, initializer: Option<Expr> },  // let x T [= expr]
+    While       { condition: Expr, body: Box<Block> },             // while cond { ... } / while cond: expr
     ExprStmt    { expr: Expr },
 }
 ```
+
+The `let` **initializer is optional** (`let x Int` with no `= expr` is valid). When omitted, the binding reserves a slot but emits no store; a later assignment fills it. The declared type is still enforced for any later assignment.
 
 **`if` is implemented** as an `ExprKind` variant (see Expressions below), not a `StmtKind`. **`while` is implemented** as a `StmtKind` variant (see Loops below). **`return`** is an `ExprKind` variant (it is an expression of type `Never`, see below), not a `StmtKind`. **Assignment** is also an `ExprKind` variant (an expression of type `Unit`, see below), not a `StmtKind`.
 
@@ -125,10 +127,12 @@ enum StmtKind {
 enum ExprKind {
     Literal  { kind: LiteralKind },                         // 1, 2.5, true
     Variable { name: Identifier },
+    Collection { elements: Vec<Expr> },                     // [a, b, c]  (array literal)
     Unary    { op: UnOp, expr: Box<Expr> },                 // -x, not x
     Binary   { op: BinOp, left: Box<Expr>, right: Box<Expr> },
     Call     { callee: Box<Expr>, args: Vec<Expr> },
-    Assignment { target: Box<Expr>, value: Box<Expr> },     // x = expr   (always Unit)
+    Assignment { target: Box<Expr>, value: Box<Expr> },     // x = expr / arr[i] = expr  (always Unit)
+    Index    { expr: Box<Expr>, index: Box<Expr> },         // arr[i]
     If       { condition: Box<Expr>, then_branch: Box<Block>, else_branch: Option<Box<Block>> },
     Break,                                                   // break    (Never; loops only)
     Continue,                                                // continue (Never; loops only)
@@ -138,14 +142,16 @@ enum ExprKind {
 
 Call expressions only work with a `Variable` callee at the compiler stage (function pointers are not supported yet). The semantic pass enforces the callee is a function type.
 
-`if` is an **expression**. Each branch is a `Block`, so it reuses the same braces/colon forms as a function body (`Parser::branch_block` mirrors `Parser::function_body`). The condition is parenthesis-free (Rust-style). A braces branch is typed by its last statement: if that statement is an expression statement, the branch's type is that expression's type; otherwise the branch is `Unit`. A colon branch is typed by its single expression.
+`Collection` is the array literal `[a, b, c]`, parsed when `[` appears in **prefix** position (`Parser::collection`). `Index` is `arr[i]`, parsed when `[` appears in **infix/postfix** position (`Parser::index`). Both are covered in detail in the "Arrays" section below. An `Index` may be the `target` of an `Assignment` (writing through a subscript); the semantic and compiler stages special-case `Variable` vs `Index` assignment targets.
 
-`if` behaves differently depending on position, and both the semantic pass and the compiler special-case it:
+`if` is an **expression**. Each branch is a `Block`, so it reuses the same braces/colon forms as a function body. The condition is parenthesis-free (Rust-style). A braces branch is typed by its last statement: if that statement is an expression statement, the branch's type is that expression's type; otherwise the branch is `Unit`. A colon branch is typed by its single expression.
 
-- **Statement position** (the `if` is the direct `expr` of a `StmtKind::ExprStmt`): the `else` branch is optional and the branch value is discarded. `Resolver::if_statement` / `Compiler::if_statement` handle this; the construct has type `Unit` and lowers to a Wasm `if` with `BlockType::Empty`, dropping any branch value in place (`Compiler::branch_discard`).
-- **Expression position** (anywhere else — declaration initializer, `return`, call argument, operand, a branch's trailing expression, a colon function body): the `else` branch is **mandatory** and both branches must have the same type, which becomes the type of the `if`. Handled by the `ExprKind::If` arm in `Resolver::expr` / `Compiler::expr`; lowers to a Wasm `if` with `BlockType::Result(T)`, each branch leaving its value on the stack (`Compiler::branch`).
+`if` is handled by a single `ExprKind::If` arm in both `Resolver::expr` and `Compiler::expr` (there is no longer a separate `if_statement`/`if_expr` split):
 
-This statement-vs-expression `else` rule matches Kotlin. The `Resolver` tracks the enclosing function in a `current_function` field so branch resolution can reach the function's return type and declare branch-local variables.
+- **Semantic** (`Resolver::expr`, `If` arm): the condition is checked via `check_condition`, both branches are typed via `block`, and `then_ty`/`else_ty` are unified. A missing `else` is treated as an `else` of type `Unit`, so the unification fails ("Type mismatch: expected `<then_ty>`, found `Unit`") unless the then-branch is itself `Unit`. The resulting type is the unified branch type (or the non-`Never` branch's type when one side diverges).
+- **Compiler** (`Compiler::expr`, `If` arm): looks up the `if` node's type; a `Unit`/`Never` `if` lowers with `BlockType::Empty`, otherwise `BlockType::Result(T)` where each branch (`Compiler::branch`) leaves its value on the stack.
+
+> **Behavioral note / known discrepancy:** because a missing `else` is modeled as `Unit`, an `if` *statement* whose then-branch produces a **non-`Unit`** value and has no `else` now fails to type-check (e.g. `if c { some_int_call() }` discarding the result). The older design (still described in the tour and below) intended statement-position `if` to discard the branch value and allow a missing `else` regardless of type. Decide whether to restore that behavior (re-introduce a statement-vs-expression distinction) or keep the current stricter rule.
 
 ### Loops (`while`)
 
@@ -153,7 +159,7 @@ This statement-vs-expression `else` rule matches Kotlin. The `Resolver` tracks t
 
 `while` is a **statement only** — it is never wired into `expression_precedence`, so using it in expression position (e.g. `let a Int = while ...`) is a parse error ("Unexpected `while`"). It always has type `Unit`.
 
-- **Semantic** (`Resolver::stmt`, `StmtKind::While` arm): checks the condition is `Bool` via the shared `check_condition(.., keyword)` helper (now parameterized so the error names `if` vs `while`), then type-checks the body with `block_type` (which opens/closes a scope) and discards its type.
+- **Semantic** (`Resolver::stmt`, `StmtKind::While` arm): checks the condition is `Bool` via the shared `check_condition(.., keyword)` helper (now parameterized so the error names `if` vs `while`), then type-checks the body with `block` (which opens/closes a scope) and discards its type.
 - **Compiler** (`Compiler::stmt`, `StmtKind::While` arm): lowers to the standard Wasm `block` / `loop` / `br_if` / `br` shape:
 
   ```wat
@@ -184,37 +190,61 @@ This statement-vs-expression `else` rule matches Kotlin. The `Resolver` tracks t
 `Never` (`semantic::Type::Never`) is the bottom type — the type of expressions that never yield a value because control leaves them (`return`/`break`/`continue`). Key rules:
 
 - `unify_ty` succeeds whenever **either** side is `Never` (it is compatible with every type).
-- In `if_expr`, when one branch is `Never` the whole `if` takes the *other* branch's type (the "join"), so `let x Int = if c { return 0 } else { 5 }` type-checks as `Int`.
+- In the `ExprKind::If` arm, when one branch is `Never` the whole `if` takes the *other* branch's type (the "join"), so `let x Int = if c { return 0 } else { 5 }` type-checks as `Int`.
 - A braces function body with a non-`Unit` return type must have block type `Never` (it ends in a `return`, or an `if`/`else` where all branches `return`) — otherwise it's a "Missing return statement" error. (Replaces the old "last statement is literally a `return`" check, so `if`/`else`-return bodies now type-check.)
-- In the compiler, an `if` whose node type is `Never` uses `BlockType::Empty` (no result), and `expr_stmt` does not emit a `drop` for `Never` (or `Unit`) values. `Never` is never passed to `Type::lower()`.
+- In the compiler, an `if` whose node type is `Never` uses `BlockType::Empty` (no result), and `expr_stmt` does not emit a `drop` for `Never` (or `Unit`) values. `Never` is never passed to the type-lowering helpers (`Types::val_ty`/`wasm_ty`).
 
 #### Assignment
 
 `x = expr` is `ExprKind::Assignment { target, value }`, an **expression** whose type is always `Type::Unit` (like Rust). Because it is an expression, it may appear anywhere an expression is expected — in particular as the single expression of a colon body, so `while c: a = a + 1` works.
 
 - **Parsing** (`Parser::assignment`, reached from `Parser::expression`): assignment binds looser than every binary operator and is **right-associative**, so `a = b = c` parses as `a = (b = c)`. `assignment` parses a full operator-precedence expression for the target, then — if an `=` follows — recurses for the value. The `=` continues across a newline like a binary operator. `expr_stmt` no longer special-cases `=`; it just wraps an expression.
-- **Semantic** (`ExprKind::Assignment` arm in `Resolver::expr`): the target must be a `Variable` (otherwise "Invalid assignment target"); the value's type must unify with the variable's type. The assignment node's type is `Unit`.
-- **Compiler** (`ExprKind::Assignment` arm in `Compiler::expr`): emits the value then `LocalSet(addr)`, leaving nothing on the operand stack (consistent with `Unit`). When used in statement position, `expr_stmt` emits no `drop` because the type is `Unit`.
+- **Semantic** (`ExprKind::Assignment` arm in `Resolver::expr`): the target is type-checked, then its `kind` must be a `Variable` or an `Index` (otherwise "Invalid assignment target"). The value's type must unify with the target's type (the variable's type, or the indexed element type). The assignment node's type is `Unit`.
+- **Compiler** (`ExprKind::Assignment` arm in `Compiler::expr`): a `Variable` target emits the value then `LocalSet(addr)`; an `Index` target emits the array, the index (wrapped to `i32` via `I32WrapI64`), the value, then `ArraySet(type_idx)`. Either way nothing is left on the operand stack (consistent with `Unit`), so `expr_stmt` emits no `drop`.
+
+#### Arrays
+
+`Array[T]` is the language's only compound type and is implemented end to end as a Wasm GC array. The three moving parts are the type (`Array[T]`), the literal (`ExprKind::Collection`), and indexing (`ExprKind::Index`, both reading and — as an assignment target — writing).
+
+**Type syntax & resolution.** `Array[Int]` parses to a `TypeRef { name: "Array", args: [Int] }` (`Parser::type_ref` parses optional `[...]` generic arguments on any type name). `Resolver::ty_ref` maps `Array` with exactly one argument to `Type::Array { ty: Rc<Type> }`, resolving the element recursively (so `Array[Array[Int]]` works); zero or 2+ arguments give "Invalid array type". `Display` prints it as `Array[T]`.
+
+**Collection literals** (`[a, b, c]`, `Parser::collection`, prefix `[`): there is **no array type literal** — a collection's element type is taken from the **expected type** threaded through `Resolver::expr`. The `ExprKind::Collection` arm requires an expected `Array[T]` (else "Not enough information to infer type of collection" or "expected `<T>`, found collection"), then unifies every element against `T`. An empty `[]` is allowed and takes the expected type. The expected type reaches the literal from: `let` initializers, `return`, the colon body, call arguments, and the trailing position of a block/branch. The compiler lowers a collection to: push each element, then `ArrayNewFixed { type_idx, len }`.
+
+**Indexing** (`arr[i]`, `Parser::index`, infix `[`, precedence 7): `ExprKind::Index { expr, index }`. Semantic: `expr` must be `Array[T]` (else "expected Array, found ...") and `index` must be `Int` (else "index expected as Int, found ..."); the result type is `T`. Compiler read: push the array, push the index, `I32WrapI64` (Int is `i64`, the array opcode wants `i32`), `ArrayGet(type_idx)`. Writing through an index is handled by the `Assignment` arm (see above), emitting `ArraySet`. Indexing is left-associative and chains for nested arrays (`grid[i][j]`).
+
+**IR / emit.** `ir::Type::Array { ty: StorageType }` is the defined array type; `ir::ValType::Ref(TypeIdx)` is a (nullable) reference to it. The instructions are `ArrayNewFixed { type_idx, len }`, `ArrayGet(type_idx)`, and `ArraySet(type_idx)`, encoded in `emit.rs` to the corresponding `wasm_encoder` `array.new_fixed` / `array.get` / `array.set`. The type section encodes arrays as `(array (mut T'))` (always mutable). Running requires the GC + function-references proposals (`Config::wasm_gc(true)`, `wasm_function_references(true)`).
+
+**Known limitations / gaps (not yet handled):**
+
+- `==` / `!=` on arrays type-checks (the `Binary` `Eq`/`Ne` arm returns `Bool` for any matching operand type) but the compiler's `Binary` arm has no array (or `Bool`) case, so lowering such a comparison hits `panic!("Unsupported binary operation")`. Equality on arrays should be rejected in semantics or lowered structurally. (The same latent gap means `Bool == Bool` currently panics in the compiler even though it type-checks.)
+- Array length, iteration sugar, slicing, and bounds metadata do not exist; out-of-bounds access traps at runtime.
 
 ### Types
 
 ```rust
-struct TypeRef { node: Node, name: Identifier }   // in AST (syntax) — an unresolved type name
-enum Type { Unit, Int, Float, Bool, Never, Function { params, ret } }  // in semantic (runtime)
+struct TypeRef { node: Node, name: Identifier, args: Vec<TypeRef> }   // in AST (syntax) — unresolved type name + generic args
+enum Type {                                                          // in semantic (runtime)
+    Unit, Int, Float, Bool, Never,
+    Array { ty: Rc<Type> },
+    Function { params: Rc<[Type]>, ret: Rc<Type> },
+}
 ```
 
-**Type names are resolved during semantic analysis, not parsing.** A `TypeRef` is just the raw identifier the user wrote (e.g. `Int`), captured verbatim by `Parser::type_ref` — the parser accepts *any* identifier as a type and does no validation. `Resolver::ty_ref(&TypeRef) -> Result<Type>` maps the name to a `Type`, accepting `Int`, `Float`, `Bool`, `Unit`, and `Never`; any other name is a **Resolve error** (`"Unknown type"`) reported at the type's span. This is why "unknown type" tests live in `semantic/test.rs`, not `parser/test.rs`. All annotation sites (function params and return type in `Resolver::module`/`function`, and `let` declarations in `Resolver::stmt`) go through `ty_ref`. There is no `TypeRef::lower`; that mapping now lives in `ty_ref`.
+**Type names are resolved during semantic analysis, not parsing.** A `TypeRef` is the raw identifier the user wrote (e.g. `Int`) plus any bracketed generic arguments (e.g. `Array[Int]` → name `Array`, args `[Int]`), captured verbatim by `Parser::type_ref` — the parser accepts *any* identifier as a type, parses optional `[...]` arguments, and does no validation. `Resolver::ty_ref(&TypeRef) -> Result<Type>` maps the name to a `Type`, accepting `Int`, `Float`, `Bool`, `Unit`, `Never`, and `Array[T]` (exactly one argument, resolved recursively); any other name is a **Resolve error** (`"Unknown type"`), and a malformed `Array` (zero or more than one argument) is `"Invalid array type"`, reported at the type's span. This is why "unknown type"/"invalid array type" tests live in `semantic/test.rs`, not `parser/test.rs`. All annotation sites (function params and return type in `Resolver::module`/`function`, and `let` declarations in `Resolver::stmt`) go through `ty_ref`. There is no `TypeRef::lower`; that mapping now lives in `ty_ref`.
 
 `Unit` is the type of functions with no return type annotation. It has no literal and cannot be stored in a variable, though it may now be written explicitly as a type name. `Never` is the bottom type of diverging expressions (`return`/`break`/`continue`); it has no literal, no Wasm representation, and is compatible with every type (see "The `Never` type" above).
 
 ### Type-to-Wasm mapping
 
-| Luffy `Type` | Wasm `ValType` |
-|--------------|----------------|
-| `Int`        | `i64`          |
-| `Float`      | `f64`          |
-| `Bool`       | `i32`          |
-| `Unit`       | (no result)    |
+| Luffy `Type` | Wasm `ValType`                                  |
+|--------------|-------------------------------------------------|
+| `Int`        | `i64`                                           |
+| `Float`      | `f64`                                           |
+| `Bool`       | `i32`                                           |
+| `Unit`       | (no result)                                     |
+| `Array[T]`   | `(ref null $a)` where `$a = (array (mut T'))`   |
+
+Arrays are Wasm GC arrays: each distinct `Array[T]` adds an `(array (mut T'))` entry to the type section (where `T'` is the lowered element `ValType`), and array *values* are nullable references to that type. The runtime is configured with `wasm_gc(true)` and `wasm_function_references(true)` (see `emit::run` and the `emit`/test harness).
 
 ---
 
@@ -232,7 +262,7 @@ struct Semantics {
 
 `DeclarationId` is an index into `semantics.declarations`.
 
-`Declaration::kind` is either `DeclarationKind::Function` or `DeclarationKind::Local(fn_id)`, where `fn_id` is the `DeclarationId` of the enclosing function. The compiler uses this to assign local variable indices per function.
+`Declaration::kind` is `DeclarationKind::Function`, `DeclarationKind::Import`, or `DeclarationKind::Local(fn_id)`, where `fn_id` is the `DeclarationId` of the enclosing function. The compiler uses `Local(fn_id)` to assign local variable indices per function, and distinguishes `Import` from `Function` so imports get the lowest Wasm function indices.
 
 All functions (including imports) are pre-declared before any body is type-checked, so forward calls and mutual recursion work without special handling.
 
@@ -245,11 +275,19 @@ All functions (including imports) are pre-declared before any body is type-check
 1. **First pass:** assigns `FuncIdx` to every import and function in declaration order. Imports get the lowest indices (they appear first in the Wasm binary).
 2. **Second pass:** emits function bodies for non-import items.
 
-`calculate_addresses()` assigns `LocalIdx` to every local declaration. Parameters and locals share the same index space within a function (parameters occupy indices 0..N, then locals follow).
+Local indices are assigned inline in `Compiler::module` (there is no separate `calculate_addresses()`): a pass over `semantics.declarations` gives each `DeclarationKind::Local(fn_id)` the next index for its function (via a per-`fn_id` counter). Parameters and locals share the same index space within a function (parameters, which are declared first, occupy indices 0..N, then locals follow). `Compiler::function` rebuilds the function's `locals` list by taking that function's `Local` declarations in order and skipping the first `params.len()`.
 
 `and` and `or` compile to Wasm `if/else/end` blocks to implement short-circuit evaluation. They are handled specially in `Compiler::expr` before the standard left/right operand push pattern.
 
 The import module name is hardcoded as `"js"`.
+
+### Wasm types (`Compiler::Types`)
+
+The compiler interns Wasm types in a `Types` helper keyed by the semantic `Type` (`unique_types: HashMap<Type, TypeIdx>`):
+
+- `val_ty(&Type) -> ir::ValType` lowers a *value* type: `Int→i64`, `Float→f64`, `Bool→i32`, and `Array[T]→Ref(idx)` (creating the array type on demand). `Unit`/`Never`/`Function` are not value types (`todo!()`).
+- `wasm_ty(&Type) -> ir::Type` builds a *defined* type for the type section: `Function` → `(func ...)`, `Array[T]` → `(array (mut T'))`. Element/param/result types are lowered with `val_ty`, so a nested `Array[Array[Int]]` creates the inner array type **before** the outer one (no forward references).
+- `type_idx`/`get_or_create` dedupe by semantic `Type`, so two functions with the same signature — or two `Array[T]` with the same element type — share one type-section entry.
 
 ---
 
@@ -295,7 +333,7 @@ where relevant. See the "Newline and semicolon handling" section in
 | Precedence | Operators                          |
 |------------|------------------------------------|
 | 8          | `.` (dot), `(` (function call)     |
-| 7          | `not`, `-` (unary prefix)          |
+| 7          | `[` (index), `not`, `-` (unary prefix) |
 | 6          | `*`, `/`, `%`                      |
 | 5          | `+`, `-`                           |
 | 4          | `>`, `>=`, `<`, `<=`               |
@@ -303,7 +341,9 @@ where relevant. See the "Newline and semicolon handling" section in
 | 2          | `and`                              |
 | 1          | `or`                               |
 
-The parser uses Pratt parsing (`expression_precedence(min_precedence)`).
+The parser uses Pratt parsing (`expression_precedence(min_precedence)`). A leading `[` in prefix position is a collection literal, not an index; in infix position it is an index (`a[i]`).
+
+Note the newline rule for `[` differs from `(`: a `(` at the start of a new line begins a new statement (Swift-style disambiguation), but a `[` always continues the previous expression as an index, even across a newline. So `a\n[0]` parses as the single index `a[0]`.
 
 ---
 
