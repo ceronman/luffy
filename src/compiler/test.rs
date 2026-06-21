@@ -747,6 +747,38 @@ fn if_statement_without_else_has_no_result() {
     "#);
 }
 
+#[test]
+fn if_statement_without_else_has_no_result_with_expr_stmt() {
+    let src = r#"
+        fn foo(x Int) Int: 1
+        export fn main() {
+            if 1 > 0 {
+                foo(1)
+            }
+        }
+    "#;
+    assert_snapshot!(compile_to_wat(src), @r#"
+    (module
+      (type (;0;) (func (param i64) (result i64)))
+      (type (;1;) (func))
+      (export "main" (func 1))
+      (func (;0;) (type 0) (param i64) (result i64)
+        i64.const 1
+      )
+      (func (;1;) (type 1)
+        i64.const 1
+        i64.const 0
+        i64.gt_s
+        if ;; label = @1
+          i64.const 1
+          call 0
+          drop
+        end
+      )
+    )
+    "#);
+}
+
 // ── `while` statement compilation ─────────────────────────────────────────────
 
 #[test]
