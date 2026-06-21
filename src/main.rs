@@ -13,9 +13,15 @@ fn main() {
     let code = r#"
         import fn print_int(x Int)
 
-        fn foo() Int: 1
+        struct Foo {
+            a Int
+            b Float
+            c Bool
+            d Array[Int]
+        }
+
         export fn main() {
-            if true: foo()
+            print_int(1)
         }
     "#;
 

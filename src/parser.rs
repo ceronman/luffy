@@ -3,10 +3,7 @@ mod numbers;
 mod test;
 
 use crate::ast::StmtKind::ExprStmt;
-use crate::ast::{
-    BinOp, BinOpKind, Block, BlockKind, Expr, ExprKind, Identifier, Item, ItemKind, LiteralKind,
-    Module, Node, Param, Stmt, StmtKind, TypeRef, UnOp, UnOpKind,
-};
+use crate::ast::{BinOp, BinOpKind, Block, BlockKind, Expr, ExprKind, Field, Identifier, Item, ItemKind, LiteralKind, Module, Node, Param, Stmt, StmtKind, TypeRef, UnOp, UnOpKind};
 use crate::error::{CompilerError, ErrorKind};
 use crate::lexer::{Lexer, Token, TokenKind};
 use crate::source::Span;
@@ -61,6 +58,7 @@ impl<'src> Parser<'src> {
         match self.current.kind {
             TokenKind::Export | TokenKind::Fn => self.function(),
             TokenKind::Import => self.import(),
+            TokenKind::Struct => self.struct_(),
             _ => error(
                 self.current.span,
                 format!(
@@ -69,6 +67,34 @@ impl<'src> Parser<'src> {
                 ),
             ),
         }
+    }
+
+    fn struct_(&mut self) -> Result<Item> {
+        let struct_token = self.expect(TokenKind::Struct)?;
+        let name =
+            self.identifier(|t| format!("Expected struct name, found {} instead", t.kind))?;
+        self.expect(TokenKind::LBrace)?;
+        let fields = self.fields()?;
+        self.expect(TokenKind::RBrace)?;
+        Ok(Item {
+            node: self.node(struct_token.span, name.node.span),
+            kind: ItemKind::Struct { name, fields },
+        })
+    }
+
+    fn fields(&mut self) -> Result<Vec<Field>> {
+        let mut fields = Vec::new();
+        while self.current.kind != TokenKind::RBrace {
+            let name = self.identifier(|t| format!("Expected field name, found {} instead", t.kind))?;
+            let ty = self.type_ref()?;
+            self.separator("fields")?;
+            fields.push(Field {
+                node: self.node(name.node.span, ty.node.span),
+                name,
+                ty,
+            });
+        }
+        Ok(fields)
     }
 
     fn function(&mut self) -> Result<Item> {
@@ -547,7 +573,7 @@ impl<'src> Parser<'src> {
                 break;
             }
             statements.push(self.statement()?);
-            self.stmt_separator()?;
+            self.separator("statements")?;
         }
         let rbrace = self.expect(TokenKind::RBrace)?;
         Ok(Block {
@@ -627,7 +653,7 @@ impl<'src> Parser<'src> {
         while self.eat(TokenKind::Semicolon) {}
     }
 
-    fn stmt_separator(&mut self) -> Result<()> {
+    fn separator(&mut self, kind: &str) -> Result<()> {
         if !self.current.newline_before
             && !matches!(
                 self.current.kind,
@@ -637,7 +663,7 @@ impl<'src> Parser<'src> {
             return error(
                 self.current.span,
                 format!(
-                    "Expected newline or `;` between statements, found {}",
+                    "Expected newline or `;` between {kind}, found {}",
                     self.current.kind
                 ),
             );

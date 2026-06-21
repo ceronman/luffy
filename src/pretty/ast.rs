@@ -1,7 +1,4 @@
-use crate::ast::{
-    BinOpKind, Block, BlockKind, Expr, ExprKind, Identifier, Item, ItemKind, LiteralKind, Module,
-    Stmt, StmtKind, TypeRef, UnOpKind,
-};
+use crate::ast::{BinOpKind, Block, BlockKind, Expr, ExprKind, Field, Identifier, Item, ItemKind, LiteralKind, Module, Stmt, StmtKind, TypeRef, UnOpKind};
 use std::fmt::Write;
 
 struct PrettyAst {
@@ -55,6 +52,12 @@ impl PrettyAst {
                     Self::new("Body", vec![Self::block(body)]),
                 ],
             ),
+            ItemKind::Struct { name, fields } => {
+                Self::new(
+                    format!("Struct [{}]", name.symbol),
+                    fields.iter().map(Self::field),
+                )
+            },
             ItemKind::Import {
                 name,
                 params,
@@ -86,6 +89,15 @@ impl PrettyAst {
                 ],
             ),
         }
+    }
+    fn field(field: &Field) -> PrettyAst {
+        Self::new(
+            "Field",
+            vec![
+                Self::identifier(&field.name),
+                Self::ty(&field.ty),
+            ],
+        )
     }
     fn block(block: &Block) -> PrettyAst {
         match &block.kind {

@@ -35,6 +35,10 @@ pub enum ItemKind {
         return_ty: Option<TypeRef>,
         body: Block,
     },
+    Struct {
+        name: Identifier,
+        fields: Vec<Field>,
+    },
     Import {
         name: Identifier,
         params: Vec<Param>,
@@ -51,6 +55,13 @@ pub struct TypeRef {
 
 #[derive(Debug)]
 pub struct Param {
+    pub node: Node,
+    pub name: Identifier,
+    pub ty: TypeRef,
+}
+
+#[derive(Debug)]
+pub struct Field {
     pub node: Node,
     pub name: Identifier,
     pub ty: TypeRef,

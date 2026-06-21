@@ -9,6 +9,7 @@ use crate::error::{CompilerError, ErrorKind};
 use crate::source::{Span, Symbol};
 use std::collections::{HashMap, VecDeque};
 use std::fmt::{Debug, Display, Formatter};
+use std::hint::unreachable_unchecked;
 use std::rc::Rc;
 
 pub type DeclarationId = usize;
@@ -150,9 +151,11 @@ impl Resolver {
                     let kind = match &item.kind {
                         ItemKind::Function { .. } => DeclarationKind::Function,
                         ItemKind::Import { .. } => DeclarationKind::Import,
+                        _ => unreachable!(),
                     };
                     self.declare(name, ty, kind)?;
                 }
+                ItemKind::Struct { .. } => todo!()
             }
         }
 
@@ -166,6 +169,9 @@ impl Resolver {
                 ItemKind::Import { name, .. } => {
                     let decl_id = self.lookup(name)?;
                     self.semantics.uses.insert(name.node.id, decl_id);
+                }
+                ItemKind::Struct { name, fields } => {
+                    todo!()
                 }
             }
         }
