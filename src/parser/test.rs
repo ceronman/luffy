@@ -2595,3 +2595,182 @@ fn index_continues_across_newline_before_bracket() {
     └── Int[0]
     ");
 }
+
+// ── Struct-declaration tests ──────────────────────────────────────────────────
+
+#[test]
+fn struct_empty() {
+    // A struct with no fields produces a `Struct` item with no children.
+    assert_snapshot!(parse_module("struct Empty {}"), @"
+    Module
+    └── Struct [Empty]
+    ");
+}
+
+#[test]
+fn struct_single_field() {
+    assert_snapshot!(parse_module("struct Point { x Int }"), @"
+    Module
+    └── Struct [Point]
+        └── Field
+            ├── x
+            └── Type [Int]
+    ");
+}
+
+#[test]
+fn struct_multiple_fields() {
+    // Fields are separated by newlines and each carries a name and a type.
+    let src = r#"
+        struct Foo {
+            a Int
+            b Float
+            c Bool
+        }
+    "#;
+    assert_snapshot!(parse_module(src), @"
+    Module
+    └── Struct [Foo]
+        ├── Field
+        │   ├── a
+        │   └── Type [Int]
+        ├── Field
+        │   ├── b
+        │   └── Type [Float]
+        └── Field
+            ├── c
+            └── Type [Bool]
+    ");
+}
+
+#[test]
+fn struct_fields_semicolon_separated() {
+    // Fields on a single line can be separated with `;`, just like statements.
+    assert_snapshot!(parse_module("struct P { x Int; y Int }"), @"
+    Module
+    └── Struct [P]
+        ├── Field
+        │   ├── x
+        │   └── Type [Int]
+        └── Field
+            ├── y
+            └── Type [Int]
+    ");
+}
+
+#[test]
+fn struct_field_trailing_semicolon() {
+    // A trailing `;` after the last field is allowed (and produces no extra
+    // field).
+    assert_snapshot!(parse_module("struct P { x Int; }"), @"
+    Module
+    └── Struct [P]
+        └── Field
+            ├── x
+            └── Type [Int]
+    ");
+}
+
+#[test]
+fn struct_fields_mixed_separators() {
+    // Semicolons and newlines can be mixed as field separators.
+    let src = r#"
+        struct Mixed {
+            a Int; b Float
+            c Bool
+        }
+    "#;
+    assert_snapshot!(parse_module(src), @"
+    Module
+    └── Struct [Mixed]
+        ├── Field
+        │   ├── a
+        │   └── Type [Int]
+        ├── Field
+        │   ├── b
+        │   └── Type [Float]
+        └── Field
+            ├── c
+            └── Type [Bool]
+    ");
+}
+
+#[test]
+fn struct_field_with_generic_type() {
+    // A field type can be a generic type such as `Array[Int]`, which is parsed
+    // into a `Type` node with an `Args` child.
+    let src = r#"
+        struct Bag {
+            items Array[Int]
+        }
+    "#;
+    assert_snapshot!(parse_module(src), @"
+    Module
+    └── Struct [Bag]
+        └── Field
+            ├── items
+            └── Type [Array]
+                └── Args
+                    └── Type [Int]
+    ");
+}
+
+#[test]
+fn struct_alongside_functions() {
+    // A struct declaration can appear next to other top-level items.
+    let src = r#"
+        struct Point { x Int }
+        fn origin() {}
+    "#;
+    assert_snapshot!(parse_module(src), @"
+    Module
+    ├── Struct [Point]
+    │   └── Field
+    │       ├── x
+    │       └── Type [Int]
+    └── Function [origin]
+        ├── Export [false]
+        ├── Parameters
+        ├── Return
+        │   └── Unit
+        └── Body
+            └── Block
+    ");
+}
+
+#[test]
+fn error_struct_missing_name() {
+    // The `struct` keyword must be followed by a name.
+    assert_snapshot!(parse_module("struct {}"), @"
+    struct {}
+           ^ ─── Expected struct name, found `{` instead
+    ");
+}
+
+#[test]
+fn error_struct_field_missing_type() {
+    // Each field requires a type after its name.
+    assert_snapshot!(parse_module("struct P { x }"), @"
+    struct P { x }
+                 ^ ─── Expected type, found `}` instead
+    ");
+}
+
+#[test]
+fn error_struct_fields_need_separator() {
+    // Two fields on the same line without a newline (or `;`) between them is an
+    // error: a separator is required between fields.
+    assert_snapshot!(parse_module("struct P { x Int y Int }"), @"
+    struct P { x Int y Int }
+                     ^ ─── Expected newline or `;` between fields, found <Identifier>
+    ");
+}
+
+#[test]
+fn error_struct_field_name_keyword() {
+    // A reserved keyword cannot be used as a field name.
+    assert_snapshot!(parse_module("struct P { let Int }"), @"
+    struct P { let Int }
+               ^^^ ─── Expected field name, found `let` instead
+    ");
+}

@@ -9,7 +9,6 @@ use crate::error::{CompilerError, ErrorKind};
 use crate::source::{Span, Symbol};
 use std::collections::{HashMap, VecDeque};
 use std::fmt::{Debug, Display, Formatter};
-use std::hint::unreachable_unchecked;
 use std::rc::Rc;
 
 pub type DeclarationId = usize;
@@ -155,7 +154,7 @@ impl Resolver {
                     };
                     self.declare(name, ty, kind)?;
                 }
-                ItemKind::Struct { .. } => todo!()
+                ItemKind::Struct { .. } => todo!(),
             }
         }
 

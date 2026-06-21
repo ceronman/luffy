@@ -3,7 +3,10 @@ mod numbers;
 mod test;
 
 use crate::ast::StmtKind::ExprStmt;
-use crate::ast::{BinOp, BinOpKind, Block, BlockKind, Expr, ExprKind, Field, Identifier, Item, ItemKind, LiteralKind, Module, Node, Param, Stmt, StmtKind, TypeRef, UnOp, UnOpKind};
+use crate::ast::{
+    BinOp, BinOpKind, Block, BlockKind, Expr, ExprKind, Field, Identifier, Item, ItemKind,
+    LiteralKind, Module, Node, Param, Stmt, StmtKind, TypeRef, UnOp, UnOpKind,
+};
 use crate::error::{CompilerError, ErrorKind};
 use crate::lexer::{Lexer, Token, TokenKind};
 use crate::source::Span;
@@ -84,8 +87,13 @@ impl<'src> Parser<'src> {
 
     fn fields(&mut self) -> Result<Vec<Field>> {
         let mut fields = Vec::new();
-        while self.current.kind != TokenKind::RBrace {
-            let name = self.identifier(|t| format!("Expected field name, found {} instead", t.kind))?;
+        loop {
+            self.skip_semicolons();
+            if self.current.kind == TokenKind::RBrace {
+                break;
+            }
+            let name =
+                self.identifier(|t| format!("Expected field name, found {} instead", t.kind))?;
             let ty = self.type_ref()?;
             self.separator("fields")?;
             fields.push(Field {

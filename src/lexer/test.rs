@@ -38,6 +38,24 @@ fn import_export_keywords() {
 }
 
 #[test]
+fn keyword_struct() {
+    assert_snapshot!(
+        tokens("struct"),
+        @"[ `struct` ]"
+    );
+}
+
+#[test]
+fn struct_declaration_tokens() {
+    // A struct declaration lexes into the `struct` keyword, the name and field
+    // identifiers, the braces, and the field type identifiers.
+    assert_snapshot!(
+        tokens("struct Foo { a Int }"),
+        @"[ `struct`  <Identifier>  `{`  <Identifier>  <Identifier>  `}` ]"
+    );
+}
+
+#[test]
 fn logical_keywords() {
     assert_snapshot!(
         tokens("and or not"),
