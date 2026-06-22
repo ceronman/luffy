@@ -21,7 +21,7 @@ pub struct Declaration {
 }
 
 pub enum DeclarationKind {
-    Local(DeclarationId), // TODO: Make named field
+    Local { func_id: DeclarationId }, // TODO: Make named field
     Function,
     Import,
 }
@@ -524,7 +524,7 @@ impl Resolver {
         ty: Type,
         func_id: DeclarationId,
     ) -> Result<()> {
-        let decl_id = self.declare(ident, ty, DeclarationKind::Local(func_id))?;
+        let decl_id = self.declare(ident, ty, DeclarationKind::Local{ func_id })?;
         self.semantics.uses.insert(ident.node.id, decl_id);
         Ok(())
     }

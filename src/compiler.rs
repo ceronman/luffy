@@ -75,7 +75,7 @@ impl Compiler {
                     self.func_addresses
                         .insert(declaration.id, FuncAddress { idx, ty_idx });
                 }
-                DeclarationKind::Local(fn_id) => {
+                DeclarationKind::Local { func_id} => {
                     let ty = match &declaration.ty {
                         Type::Array { .. } => {
                             let ty_idx = self.wasm_types.type_idx(&declaration.ty);
@@ -84,7 +84,7 @@ impl Compiler {
                         _ => self.wasm_types.val_ty(&declaration.ty),
                     };
                     let idx = *local_indices
-                        .entry(*fn_id)
+                        .entry(*func_id)
                         .and_modify(|count| *count += 1)
                         .or_insert(0);
                     self.local_addresses
@@ -474,7 +474,7 @@ impl Compiler {
 
     fn function_locals(&self, func_id: DeclarationId) -> impl Iterator<Item = &Declaration> {
         self.semantics.declarations.iter().filter(move |&d| {
-            if let DeclarationKind::Local(decl_id) = d.kind {
+            if let DeclarationKind::Local { func_id: decl_id }  = d.kind {
                 decl_id == func_id
             } else {
                 false
