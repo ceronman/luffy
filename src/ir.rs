@@ -20,6 +20,9 @@ pub enum Type {
     Array {
         ty: StorageType,
     },
+    Struct {
+        fields: Vec<StorageType>,
+    },
 }
 
 #[derive(Copy, Clone)]

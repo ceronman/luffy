@@ -75,10 +75,19 @@ impl Compiler {
                     self.func_addresses
                         .insert(declaration.id, FuncAddress { idx, ty_idx });
                 }
-                DeclarationKind::Local { func_id} => {
+                DeclarationKind::Local { func_id } => {
                     let ty = match &declaration.ty {
                         Type::Array { .. } => {
                             let ty_idx = self.wasm_types.type_idx(&declaration.ty);
+                            ir::ValType::Ref(ty_idx)
+                        }
+                        Type::Reference { name } => {
+                            let struct_ty = self
+                                .semantics
+                                .struct_types
+                                .get(name)
+                                .expect("struct type not found");
+                            let ty_idx = self.wasm_types.type_idx(struct_ty);
                             ir::ValType::Ref(ty_idx)
                         }
                         _ => self.wasm_types.val_ty(&declaration.ty),
@@ -474,7 +483,7 @@ impl Compiler {
 
     fn function_locals(&self, func_id: DeclarationId) -> impl Iterator<Item = &Declaration> {
         self.semantics.declarations.iter().filter(move |&d| {
-            if let DeclarationKind::Local { func_id: decl_id }  = d.kind {
+            if let DeclarationKind::Local { func_id: decl_id } = d.kind {
                 decl_id == func_id
             } else {
                 false
@@ -517,6 +526,12 @@ impl Types {
             }
             Type::Array { ty } => ir::Type::Array {
                 ty: ir::StorageType::Val(self.val_ty(ty)),
+            },
+            Type::Struct { fields, .. } => ir::Type::Struct {
+                fields: fields
+                    .iter()
+                    .map(|f| ir::StorageType::Val(self.val_ty(&f.ty)))
+                    .collect(),
             },
             _ => panic!("Type is not part of types section"),
         }

@@ -3,8 +3,9 @@ mod test;
 
 use crate::ir;
 use wasm_encoder::{
-    BlockType, CodeSection, EntityType, ExportKind, ExportSection, Function, FunctionSection,
-    HeapType, ImportSection, Instruction, Module, RefType, StorageType, TypeSection, ValType,
+    BlockType, CodeSection, EntityType, ExportKind, ExportSection, FieldType, Function,
+    FunctionSection, HeapType, ImportSection, Instruction, Module, RefType, StorageType,
+    TypeSection, ValType,
 };
 
 pub fn emit(module: ir::Module) -> Vec<u8> {
@@ -20,6 +21,10 @@ pub fn emit(module: ir::Module) -> Vec<u8> {
                 );
             }
             ir::Type::Array { ty } => types.ty().array(&ty.encode(), true),
+            ir::Type::Struct { fields } => types.ty().struct_(fields.iter().map(|f| FieldType {
+                element_type: f.encode(),
+                mutable: true,
+            })),
         }
     }
     bin_module.section(&types);

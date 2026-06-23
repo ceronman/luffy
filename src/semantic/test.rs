@@ -267,7 +267,7 @@ fn error_duplicate_function_name() {
 fn error_unknown_type_in_param() {
     assert_snapshot!(check("fn f(x Unknown) {}"), @"
     fn f(x Unknown) {}
-           ^^^^^^^ ─── Unknown type
+           ^^^^^^^ ─── Unknown type `Unknown`
     ");
 }
 
@@ -275,7 +275,7 @@ fn error_unknown_type_in_param() {
 fn error_unknown_type_as_return_type() {
     assert_snapshot!(check("fn f() Unknown {}"), @"
     fn f() Unknown {}
-           ^^^^^^^ ─── Unknown type
+           ^^^^^^^ ─── Unknown type `Unknown`
     ");
 }
 
@@ -285,7 +285,7 @@ fn error_unknown_type_in_declaration() {
     // a `let` annotation.
     assert_snapshot!(check("fn f() { let x Foo = 1 }"), @"
     fn f() { let x Foo = 1 }
-                   ^^^ ─── Unknown type
+                   ^^^ ─── Unknown type `Foo`
     ");
 }
 
@@ -294,7 +294,7 @@ fn error_type_names_are_case_sensitive() {
     // Type resolution is an exact string match, so `int` is not `Int`.
     assert_snapshot!(check("fn f(x int) {}"), @"
     fn f(x int) {}
-           ^^^ ─── Unknown type
+           ^^^ ─── Unknown type `int`
     ");
 }
 
@@ -847,7 +847,7 @@ fn error_array_unknown_element_type() {
     // unknown element type is reported at the inner type reference.
     assert_snapshot!(check("fn f(x Array[Foo]) {}"), @"
     fn f(x Array[Foo]) {}
-                 ^^^ ─── Unknown type
+                 ^^^ ─── Unknown type `Foo`
     ");
 }
 

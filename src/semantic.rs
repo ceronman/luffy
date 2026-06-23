@@ -7,7 +7,7 @@ use crate::ast::{
 };
 use crate::error::{CompilerError, ErrorKind};
 use crate::source::{Span, Symbol};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::{Debug, Display, Formatter};
 use std::rc::Rc;
 
@@ -24,6 +24,7 @@ pub enum DeclarationKind {
     Local { func_id: DeclarationId }, // TODO: Make named field
     Function,
     Import,
+    Struct,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -33,8 +34,26 @@ pub enum Type {
     Float,
     Bool,
     Never,
-    Array { ty: Rc<Type> },
-    Function { params: Rc<[Type]>, ret: Rc<Type> },
+    Array {
+        ty: Rc<Type>,
+    },
+    Struct {
+        name: Symbol,
+        fields: Vec<StructField>,
+    },
+    Reference {
+        name: Symbol,
+    },
+    Function {
+        params: Rc<[Type]>,
+        ret: Rc<Type>,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct StructField {
+    pub name: Symbol,
+    pub ty: Rc<Type>,
 }
 
 impl Type {
@@ -64,6 +83,8 @@ impl Display for Type {
             Type::Bool => write!(f, "Bool"),
             Type::Never => write!(f, "Never"),
             Type::Array { ty } => write!(f, "Array[{ty}]"),
+            Type::Reference { name } => write!(f, "{name}",),
+            Type::Struct { .. } => write!(f, "Struct"), // TODO: improve
             Type::Function { .. } => write!(f, "Function"), // TODO: improve
         }
     }
@@ -72,6 +93,7 @@ impl Display for Type {
 #[derive(Default)]
 pub struct Semantics {
     pub expr_types: HashMap<NodeId, Type>,
+    pub struct_types: HashMap<Symbol, Type>,
     pub declarations: Vec<Declaration>,
     pub uses: HashMap<NodeId, DeclarationId>,
 }
@@ -83,6 +105,7 @@ struct Resolver {
     scopes: VecDeque<Scope>,
     semantics: Semantics,
     loop_depth: u32,
+    incomplete_types: HashSet<Symbol>,
 }
 
 pub type Result<T> = std::result::Result<T, CompilerError>;
@@ -154,7 +177,9 @@ impl Resolver {
                     };
                     self.declare(name, ty, kind)?;
                 }
-                ItemKind::Struct { .. } => todo!(),
+                ItemKind::Struct { name, .. } => {
+                    self.incomplete_types.insert(name.symbol.clone());
+                }
             }
         }
 
@@ -170,7 +195,23 @@ impl Resolver {
                     self.semantics.uses.insert(name.node.id, decl_id);
                 }
                 ItemKind::Struct { name, fields } => {
-                    todo!()
+                    let mut ty_fields = Vec::new();
+                    for field in fields {
+                        let name = field.name.symbol.clone();
+                        let ty = self.ty_ref(&field.ty)?;
+                        ty_fields.push(StructField {
+                            name,
+                            ty: Rc::from(ty),
+                        });
+                    }
+                    let ty = Type::Struct {
+                        name: name.symbol.clone(),
+                        fields: ty_fields,
+                    };
+                    self.declare(name, ty.clone(), DeclarationKind::Struct)?;
+                    self.semantics
+                        .struct_types
+                        .insert(self.incomplete_types.take(&name.symbol).unwrap(), ty); // TODO: Unwrap
                 }
             }
         }
@@ -524,7 +565,7 @@ impl Resolver {
         ty: Type,
         func_id: DeclarationId,
     ) -> Result<()> {
-        let decl_id = self.declare(ident, ty, DeclarationKind::Local{ func_id })?;
+        let decl_id = self.declare(ident, ty, DeclarationKind::Local { func_id })?;
         self.semantics.uses.insert(ident.node.id, decl_id);
         Ok(())
     }
@@ -578,7 +619,13 @@ impl Resolver {
                     _ => resolve_err(type_ref.node.span, "Invalid array type"), // TODO: Improve error message
                 }
             }
-            _ => resolve_err(type_ref.node.span, "Unknown type"),
+            name => {
+                if self.incomplete_types.contains(&type_ref.name.symbol) {
+                    Ok(Type::Reference { name: name.into() })
+                } else {
+                    resolve_err(type_ref.node.span, format!("Unknown type `{name}`"))
+                }
+            }
         }
     }
 }
@@ -590,6 +637,7 @@ pub fn semantic_analysis(module: &Module) -> Result<Semantics> {
 
     #[cfg(debug_assertions)]
     assert_fully_typed(module, &resolver.semantics);
+    debug_assert!(resolver.incomplete_types.is_empty());
 
     Ok(resolver.semantics)
 }

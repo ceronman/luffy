@@ -21,6 +21,7 @@ fn main() {
         }
 
         export fn main() {
+            let x Foo
             print_int(1)
         }
     "#;
