@@ -255,6 +255,9 @@ impl Compiler {
                     len: elements.len() as u32,
                 });
             }
+            ast::ExprKind::Mapping { .. } => {
+                todo!()
+            }
             ast::ExprKind::Unary { op, expr } => {
                 let ty = self.node_type(expr.node);
                 match (&op.kind, ty) {

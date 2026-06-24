@@ -1,6 +1,6 @@
 use crate::ast::{
     BinOpKind, Block, BlockKind, Expr, ExprKind, Field, Identifier, Item, ItemKind, LiteralKind,
-    Module, Stmt, StmtKind, TypeRef, UnOpKind,
+    MappingField, Module, Stmt, StmtKind, TypeRef, UnOpKind,
 };
 use std::fmt::Write;
 
@@ -135,6 +135,9 @@ impl PrettyAst {
             ExprKind::Collection { elements } => {
                 Self::new("Collection", elements.iter().map(Self::expression))
             }
+            ExprKind::Mapping { fields } => {
+                Self::new("Mapping", fields.iter().map(Self::mapping_field))
+            }
             ExprKind::Unary { op, expr } => Self::new(
                 format!("Unary [{}]", Self::unary_op(&op.kind)),
                 vec![Self::expression(expr)],
@@ -176,6 +179,13 @@ impl PrettyAst {
             ExprKind::Continue => Self::new("Continue", vec![]),
             ExprKind::Return { expr } => Self::new("Return", vec![Self::expression(expr)]),
         }
+    }
+
+    fn mapping_field(field: &MappingField) -> PrettyAst {
+        Self::new(
+            "MappingField",
+            vec![Self::identifier(&field.key), Self::expression(&field.value)],
+        )
     }
 
     fn identifier(identifier: &Identifier) -> PrettyAst {

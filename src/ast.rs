@@ -118,6 +118,9 @@ pub enum ExprKind {
     Collection {
         elements: Vec<Expr>,
     },
+    Mapping {
+        fields: Vec<MappingField>,
+    },
     Unary {
         op: UnOp,
         expr: Box<Expr>,
@@ -149,6 +152,13 @@ pub enum ExprKind {
     Return {
         expr: Box<Expr>,
     },
+}
+
+#[derive(Debug)]
+pub struct MappingField {
+    pub node: Node,
+    pub key: Identifier,
+    pub value: Expr,
 }
 
 #[derive(Debug)]

@@ -5,7 +5,7 @@ mod test;
 use crate::ast::StmtKind::ExprStmt;
 use crate::ast::{
     BinOp, BinOpKind, Block, BlockKind, Expr, ExprKind, Field, Identifier, Item, ItemKind,
-    LiteralKind, Module, Node, Param, Stmt, StmtKind, TypeRef, UnOp, UnOpKind,
+    LiteralKind, MappingField, Module, Node, Param, Stmt, StmtKind, TypeRef, UnOp, UnOpKind,
 };
 use crate::error::{CompilerError, ErrorKind};
 use crate::lexer::{Lexer, Token, TokenKind};
@@ -239,6 +239,7 @@ impl<'src> Parser<'src> {
         let mut prefix = match self.current.kind {
             TokenKind::LParen => self.grouping()?,
             TokenKind::LBracket => self.collection()?,
+            TokenKind::LBrace => self.mapping()?,
             TokenKind::Int | TokenKind::Float | TokenKind::False | TokenKind::True => {
                 self.literal()?
             }
@@ -301,6 +302,36 @@ impl<'src> Parser<'src> {
         Ok(Expr {
             node: self.node(lbracket.span, rbracket.span),
             kind: ExprKind::Collection { elements },
+        })
+    }
+
+    fn mapping(&mut self) -> Result<Expr> {
+        let lbrace = self.expect(TokenKind::LBrace)?;
+        let mut elements = Vec::new();
+        if self.current.kind != TokenKind::RBrace {
+            loop {
+                elements.push(self.mapping_field()?);
+
+                if !self.eat(TokenKind::Comma) {
+                    break;
+                }
+            }
+        }
+        let rbrace = self.expect(TokenKind::RBrace)?;
+        Ok(Expr {
+            node: self.node(lbrace.span, rbrace.span),
+            kind: ExprKind::Mapping { fields: elements },
+        })
+    }
+
+    fn mapping_field(&mut self) -> Result<MappingField> {
+        let key = self.identifier(|t| format!("Expected field name, found {} instead", t.kind))?;
+        self.expect(TokenKind::Equal)?;
+        let value = self.expression()?;
+        Ok(MappingField {
+            node: self.node(key.node.span, value.node.span),
+            key,
+            value,
         })
     }
 

@@ -314,6 +314,7 @@ impl Resolver {
                 }
                 collection_ty.clone()
             }
+            ExprKind::Mapping { .. } => todo!(),
             ExprKind::Unary { expr, op } => {
                 let expr_ty = self.expr(expr, func_id, None)?;
                 match op.kind {
@@ -659,6 +660,11 @@ fn assert_fully_typed(module: &Module, semantics: &Semantics) {
             ExprKind::Collection { elements } => {
                 for element in elements {
                     check_expr(element, semantics);
+                }
+            }
+            ExprKind::Mapping { fields } => {
+                for field in fields {
+                    check_expr(&field.value, semantics);
                 }
             }
             ExprKind::Unary { expr, .. } => check_expr(expr, semantics),
