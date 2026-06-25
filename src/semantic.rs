@@ -2,8 +2,8 @@
 mod test;
 
 use crate::ast::{
-    BinOpKind, Block, BlockKind, Expr, ExprKind, Identifier, ItemKind, LiteralKind, Module, Node,
-    NodeId, Param, Stmt, StmtKind, TypeRef, UnOpKind,
+    BinOpKind, Block, BlockKind, Expr, ExprKind, Identifier, ItemKind, LiteralKind, MappingField,
+    Module, Node, NodeId, Param, Stmt, StmtKind, TypeRef, UnOpKind,
 };
 use crate::error::{CompilerError, ErrorKind};
 use crate::source::{Span, Symbol};
@@ -314,7 +314,52 @@ impl Resolver {
                 }
                 collection_ty.clone()
             }
-            ExprKind::Mapping { .. } => todo!(),
+            ExprKind::Mapping { fields } => {
+                let Some(mapping_ty) = expected_ty else {
+                    return type_err(
+                        expr.node.span,
+                        "Not enough information to infer type of collection",
+                    );
+                };
+
+                let Type::Reference { name } = mapping_ty else {
+                    return type_err(
+                        expr.node.span,
+                        format!("Type mismatch: expected '{mapping_ty}', found mapping"),
+                    );
+                };
+                let Some(Type::Struct {
+                    fields: mut ty_fields,
+                    ..
+                }) = self.semantics.struct_types.get(name).cloned()
+                else {
+                    return type_err(expr.node.span, format!("Unknown type '{name}'"));
+                };
+
+                for MappingField { key, value, .. } in fields {
+                    let Some(ty_field) = ty_fields.iter().position(|f| f.name == key.symbol) else {
+                        return type_err(
+                            key.node.span,
+                            format!("Field '{}' does not exist in type '{name}'", key.symbol),
+                        );
+                    };
+                    let ty_field = ty_fields.swap_remove(ty_field);
+                    let value_ty = self.expr(value, func_id, Some(&ty_field.ty))?;
+                    unify_ty(value.node.span, &ty_field.ty, &value_ty)?;
+                }
+
+                if let Some(missing_field) = ty_fields.first() {
+                    return type_err(
+                        expr.node.span,
+                        format!(
+                            "Type mismatch: mapping is missing field '{}'",
+                            missing_field.name
+                        ),
+                    );
+                }
+
+                mapping_ty.clone()
+            }
             ExprKind::Unary { expr, op } => {
                 let expr_ty = self.expr(expr, func_id, None)?;
                 match op.kind {
@@ -621,7 +666,12 @@ impl Resolver {
                 }
             }
             name => {
-                if self.incomplete_types.contains(&type_ref.name.symbol) {
+                if self.incomplete_types.contains(&type_ref.name.symbol)
+                    || self
+                        .semantics
+                        .struct_types
+                        .contains_key(&type_ref.name.symbol)
+                {
                     Ok(Type::Reference { name: name.into() })
                 } else {
                     resolve_err(type_ref.node.span, format!("Unknown type `{name}`"))
