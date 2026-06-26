@@ -39,7 +39,7 @@ pub enum Type {
     },
     Struct {
         name: Symbol,
-        fields: Vec<StructField>,
+        fields: Vec<StructField>, // TODO: Make cloning cheap
     },
     Reference {
         name: Symbol,

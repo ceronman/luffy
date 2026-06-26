@@ -255,8 +255,36 @@ impl Compiler {
                     len: elements.len() as u32,
                 });
             }
-            ast::ExprKind::Mapping { .. } => {
-                todo!()
+            ast::ExprKind::Mapping { fields } => {
+                let Type::Reference { name } = self.node_type(expr.node) else {
+                    panic!("Expected reference type");
+                };
+
+                let struct_ty = self
+                    .semantics
+                    .struct_types
+                    .get(&name)
+                    .expect("struct type not found");
+
+                let type_idx = self.wasm_types.type_idx(struct_ty);
+
+                let Type::Struct {
+                    fields: ty_fields, ..
+                } = struct_ty.clone()
+                else {
+                    panic!("Expected struct type");
+                };
+
+                for ty_field in ty_fields {
+                    // TODO: Consider using indexmap for fields
+                    let field = fields
+                        .iter()
+                        .find(|&field| field.key.symbol == ty_field.name)
+                        .expect("field not found");
+                    self.expr(ins, &field.value);
+                }
+
+                ins.push(ir::Instruction::StructNew(type_idx));
             }
             ast::ExprKind::Unary { op, expr } => {
                 let ty = self.node_type(expr.node);

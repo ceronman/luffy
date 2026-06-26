@@ -112,6 +112,7 @@ impl ir::Instruction {
                 array_type_index: *type_idx,
                 array_size: *len,
             },
+            ir::Instruction::StructNew(idx) => Instruction::StructNew(*idx),
             ir::Instruction::I64Const(v) => Instruction::I64Const(*v),
             ir::Instruction::I64Add => Instruction::I64Add,
             ir::Instruction::I64Sub => Instruction::I64Sub,

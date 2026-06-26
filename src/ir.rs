@@ -100,6 +100,8 @@ pub enum Instruction {
     ArraySet(TypeIdx),
     ArrayNewFixed { type_idx: TypeIdx, len: u32 },
 
+    StructNew(TypeIdx),
+
     Call(FuncIdx),
     End,
 }
