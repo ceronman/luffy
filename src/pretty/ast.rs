@@ -161,6 +161,10 @@ impl PrettyAst {
                 let index = Self::expression(index);
                 Self::new("Index", vec![expr, index])
             }
+            ExprKind::Field { expr, field } => {
+                let expr = Self::expression(expr);
+                Self::new("Field", vec![expr, Self::identifier(field)])
+            }
             ExprKind::If {
                 condition,
                 then_branch,

@@ -22,7 +22,7 @@ fn main() {
 
         export fn main() {
             let x Foo = { a = 1, b = 1.0, c = true, d = [1, 2] }
-            print_int(1)
+            print_int(x.a)
         }
     "#;
 

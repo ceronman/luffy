@@ -269,6 +269,7 @@ impl<'src> Parser<'src> {
             prefix = match self.current.kind {
                 TokenKind::LParen => self.call(prefix)?,
                 TokenKind::LBracket => self.index(prefix)?,
+                TokenKind::Dot => self.field_expr(prefix)?,
                 _ => self.binary_expr(prefix, precedence)?,
             };
         }
@@ -344,6 +345,19 @@ impl<'src> Parser<'src> {
             kind: ExprKind::Index {
                 expr: prefix.into(),
                 index: index.into(),
+            },
+        })
+    }
+
+    fn field_expr(&mut self, prefix: Expr) -> Result<Expr> {
+        self.expect(TokenKind::Dot)?;
+        let field =
+            self.identifier(|t| format!("Expected field name, found {:?} instead", t.kind))?;
+        Ok(Expr {
+            node: self.node(prefix.node.span, field.node.span),
+            kind: ExprKind::Field {
+                expr: Box::new(prefix),
+                field,
             },
         })
     }
@@ -464,10 +478,6 @@ impl<'src> Parser<'src> {
     }
 
     fn expression(&mut self) -> Result<Expr> {
-        // Assignment is an expression. It binds looser than every
-        // binary operator and is right-associative (`a = b = c` parses as
-        // `a = (b = c)`), so we parse a full operator-precedence expression for the
-        // target, then recurse on the right side when an `=` follows.
         self.assignment()
     }
 

@@ -142,6 +142,10 @@ pub enum ExprKind {
         expr: Box<Expr>,
         index: Box<Expr>,
     },
+    Field {
+        expr: Box<Expr>,
+        field: Identifier,
+    },
     If {
         condition: Box<Expr>,
         then_branch: Box<Block>,

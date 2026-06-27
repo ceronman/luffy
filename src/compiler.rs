@@ -388,6 +388,9 @@ impl Compiler {
                     self.expr(ins, value);
                     ins.push(ir::Instruction::ArraySet(ty_idx));
                 }
+                ast::ExprKind::Field { .. } => {
+                    todo!()
+                }
                 _ => panic!("Invalid assignment target"),
             },
             ast::ExprKind::Index { expr, index } => {
@@ -397,6 +400,9 @@ impl Compiler {
                 self.expr(ins, index);
                 ins.push(ir::Instruction::I32WrapI64);
                 ins.push(ir::Instruction::ArrayGet(ty));
+            }
+            ast::ExprKind::Field { .. } => {
+                todo!()
             }
             ast::ExprKind::If {
                 condition,

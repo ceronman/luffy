@@ -473,6 +473,9 @@ impl Resolver {
                 };
                 (*inner).clone()
             }
+            ExprKind::Field { .. } => {
+                todo!()
+            }
             ExprKind::If {
                 condition,
                 then_branch,
@@ -735,6 +738,9 @@ fn assert_fully_typed(module: &Module, semantics: &Semantics) {
             ExprKind::Index { expr, index } => {
                 check_expr(expr, semantics);
                 check_expr(index, semantics);
+            }
+            ExprKind::Field { expr, .. } => {
+                check_expr(expr, semantics);
             }
             ExprKind::If {
                 condition,
