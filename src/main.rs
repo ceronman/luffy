@@ -17,12 +17,17 @@ fn main() {
             a Int
             b Float
             c Bool
-            d Array[Int]
+            d Bar
+        }
+
+        struct Bar {
+            x Array[Int]
         }
 
         export fn main() {
-            let x Foo = { a = 1, b = 1.0, c = true, d = [1, 2] }
-            print_int(x.a)
+            let x Foo = { a = 1, b = 1.0, c = true, d = { x = [1, 2] } }
+            let y Int = 1
+            print_int(x.d.x[1])
         }
     "#;
 

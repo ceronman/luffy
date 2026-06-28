@@ -183,6 +183,30 @@ impl Resolver {
             }
         }
 
+        for item in &module.items {
+            if let ItemKind::Struct { name, fields } = &item.kind {
+                let mut ty_fields = Vec::new();
+                for field in fields {
+                    let name = field.name.symbol.clone();
+                    let ty = self.ty_ref(&field.ty)?;
+                    ty_fields.push(StructField {
+                        name,
+                        ty: Rc::from(ty),
+                    });
+                }
+                let ty = Type::Struct {
+                    name: name.symbol.clone(),
+                    fields: ty_fields,
+                };
+                self.declare(name, ty.clone(), DeclarationKind::Struct)?;
+                self.semantics
+                    .struct_types
+                    .insert(self.incomplete_types.take(&name.symbol).unwrap(), ty); // TODO: Unwrap
+            }
+        }
+
+        debug_assert!(self.incomplete_types.is_empty());
+
         for function in &module.items {
             match &function.kind {
                 ItemKind::Function {
@@ -194,25 +218,7 @@ impl Resolver {
                     let decl_id = self.lookup(name)?;
                     self.semantics.uses.insert(name.node.id, decl_id);
                 }
-                ItemKind::Struct { name, fields } => {
-                    let mut ty_fields = Vec::new();
-                    for field in fields {
-                        let name = field.name.symbol.clone();
-                        let ty = self.ty_ref(&field.ty)?;
-                        ty_fields.push(StructField {
-                            name,
-                            ty: Rc::from(ty),
-                        });
-                    }
-                    let ty = Type::Struct {
-                        name: name.symbol.clone(),
-                        fields: ty_fields,
-                    };
-                    self.declare(name, ty.clone(), DeclarationKind::Struct)?;
-                    self.semantics
-                        .struct_types
-                        .insert(self.incomplete_types.take(&name.symbol).unwrap(), ty); // TODO: Unwrap
-                }
+                _ => {}
             }
         }
         self.end_scope();
@@ -473,8 +479,35 @@ impl Resolver {
                 };
                 (*inner).clone()
             }
-            ExprKind::Field { .. } => {
-                todo!()
+            ExprKind::Field { expr, field } => {
+                let expr_ty = self.expr(expr, func_id, None)?;
+                let Type::Reference { name } = expr_ty else {
+                    return type_err(
+                        expr.node.span,
+                        format!("Type mismatch: expected struct, found '{expr_ty}'"),
+                    );
+                };
+                let Some(Type::Struct {
+                    name: ty_name,
+                    fields: ty_fields,
+                }) = self.semantics.struct_types.get(&name)
+                else {
+                    return type_err(
+                        field.node.span,
+                        format!("Type mismatch: struct '{name}' not found"),
+                    );
+                };
+                debug_assert!(name == *ty_name);
+                let Some(f) = ty_fields.iter().find(|&f| f.name == field.symbol) else {
+                    return type_err(
+                        field.node.span,
+                        format!(
+                            "Type mismatch: field '{}' not found in struct '{ty_name}'",
+                            field.symbol
+                        ),
+                    );
+                };
+                (*f.ty).clone()
             }
             ExprKind::If {
                 condition,
