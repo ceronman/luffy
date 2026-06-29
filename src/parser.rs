@@ -352,7 +352,7 @@ impl<'src> Parser<'src> {
     fn field_expr(&mut self, prefix: Expr) -> Result<Expr> {
         self.expect(TokenKind::Dot)?;
         let field =
-            self.identifier(|t| format!("Expected field name, found {:?} instead", t.kind))?;
+            self.identifier(|t| format!("Expected field name, found {} instead", t.kind))?;
         Ok(Expr {
             node: self.node(prefix.node.span, field.node.span),
             kind: ExprKind::Field {

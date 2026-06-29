@@ -1134,3 +1134,234 @@ fn error_over_indexing_past_element_type() {
 fn array_equality_is_accepted_by_typechecker() {
     assert_snapshot!(check("fn f(a Array[Int], b Array[Int]) Bool: a == b"), @"<no error>");
 }
+
+// ── Structs: valid programs ───────────────────────────────────────────────────
+
+#[test]
+fn valid_struct_declaration_only() {
+    // A module containing only a struct declaration (no functions) type-checks.
+    let src = r#"
+        struct Point {
+            x Int
+            y Int
+        }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn valid_struct_construction_via_mapping() {
+    // A mapping literal whose expected type is a struct constructs that struct.
+    let src = r#"
+        struct Point { x Int; y Int }
+        fn make() Point: { x = 1, y = 2 }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn valid_mapping_fields_out_of_order() {
+    // Mapping fields are matched by name, so they may be written in any order.
+    let src = r#"
+        struct Point { x Int; y Int }
+        fn make() Point: { y = 2, x = 1 }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn valid_empty_struct_construction() {
+    let src = r#"
+        struct Empty {}
+        fn make() Empty: {}
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn valid_field_read() {
+    let src = r#"
+        struct Point { x Int; y Int }
+        fn get_x(p Point) Int: p.x
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn valid_field_assignment() {
+    let src = r#"
+        struct Point { x Int; y Int }
+        fn set_x(p Point) { p.x = 5 }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn valid_struct_passed_and_returned() {
+    // A struct value can be a parameter and a return type; returning the
+    // parameter unchanged type-checks (struct types unify by name).
+    let src = r#"
+        struct Point { x Int }
+        fn id(p Point) Point: p
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn valid_nested_struct_and_forward_reference() {
+    // `Outer` refers to `Inner` before `Inner` is declared: all struct names are
+    // registered before any field types are resolved, so forward references work.
+    let src = r#"
+        struct Outer { inner Inner; n Int }
+        struct Inner { v Int }
+        fn deep(o Outer) Int: o.inner.v
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn valid_struct_with_array_field() {
+    let src = r#"
+        struct Bag { items Array[Int] }
+        fn first(b Bag) Int: b.items[0]
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn valid_struct_with_struct_field_construction() {
+    // Nested construction: a mapping value can itself be a mapping for a struct
+    // field, with the inner field type threaded as the expected type.
+    let src = r#"
+        struct Inner { v Int }
+        struct Outer { inner Inner }
+        fn make() Outer: { inner = { v = 1 } }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn valid_mapping_field_value_infers_collection_type() {
+    // The element type of an array field's collection literal is inferred from
+    // the field's declared type.
+    let src = r#"
+        struct Bag { items Array[Int] }
+        fn make() Bag: { items = [1, 2, 3] }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+// ── Structs: surprising / documented behaviors ────────────────────────────────
+
+#[test]
+fn surprising_duplicate_field_names_accepted_at_declaration() {
+    // BUG/GAP: duplicate field names are NOT rejected when the struct is
+    // declared. (Such a struct is then impossible to construct — see the
+    // mapping tests — because the second field of the same name can never be
+    // filled, but the declaration itself produces no error.)
+    let src = r#"
+        struct P {
+            x Int
+            x Float
+        }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn surprising_recursive_struct_type_checks() {
+    let src = r#"
+        struct Node { value Int; next Node }
+        fn first(n Node) Int: n.value
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn surprising_struct_named_after_builtin_is_accepted() {
+    // TODO: Fix this
+    // A struct may be named `Int`; the name resolves to the builtin everywhere a
+    // type is expected, so the struct is effectively unusable as a type but its
+    // declaration is accepted without error.
+    let src = r#"
+        struct Int { x Int }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+// ── Structs: error cases ──────────────────────────────────────────────────────
+
+#[test]
+fn error_field_access_on_non_struct() {
+    assert_snapshot!(check("fn f(x Int) Int: x.foo"), @"
+    fn f(x Int) Int: x.foo
+                     ^ ─── Type mismatch: expected struct, found 'Int'
+    ");
+}
+
+#[test]
+fn error_field_not_in_struct() {
+    assert_snapshot!(check("struct P { x Int } fn f(p P) Int: p.y"), @"
+    struct P { x Int } fn f(p P) Int: p.y
+                                        ^ ─── Type mismatch: field 'y' not found in struct 'P'
+    ");
+}
+
+#[test]
+fn error_mapping_missing_field() {
+    assert_snapshot!(check("struct P { x Int; y Int } fn make() P: { x = 1 }"), @"
+    struct P { x Int; y Int } fn make() P: { x = 1 }
+                                           ^^^^^^^^^ ─── Type mismatch: mapping is missing field 'y'
+    ");
+}
+
+#[test]
+fn error_mapping_unknown_field() {
+    assert_snapshot!(check("struct P { x Int } fn make() P: { x = 1, z = 2 }"), @"
+    struct P { x Int } fn make() P: { x = 1, z = 2 }
+                                             ^ ─── Field 'z' does not exist in type 'P'
+    ");
+}
+
+#[test]
+fn error_mapping_wrong_field_type() {
+    assert_snapshot!(check("struct P { x Int } fn make() P: { x = true }"), @"
+    struct P { x Int } fn make() P: { x = true }
+                                          ^^^^ ─── Type mismatch: expected 'Int', found 'Bool'
+    ");
+}
+
+#[test]
+fn error_mapping_without_expected_type() {
+    // A mapping with no expected type (here, an expression statement) cannot be
+    // inferred. (The message says "collection" because mappings reuse the
+    // collection inference path.)
+    assert_snapshot!(check("fn f() { { a = 1 } }"), @"
+    fn f() { { a = 1 } }
+             ^^^^^^^^^ ─── Not enough information to infer type of collection
+    ");
+}
+
+#[test]
+fn error_mapping_expected_non_struct_type() {
+    assert_snapshot!(check("fn f() { let x Int = { a = 1 } }"), @"
+    fn f() { let x Int = { a = 1 } }
+                         ^^^^^^^^^ ─── Type mismatch: expected 'Int', found mapping
+    ");
+}
+
+#[test]
+fn error_field_assignment_wrong_type() {
+    assert_snapshot!(check("struct P { x Int } fn f(p P) { p.x = true }"), @"
+    struct P { x Int } fn f(p P) { p.x = true }
+                                         ^^^^ ─── Type mismatch: expected 'Int', found 'Bool'
+    ");
+}
+
+#[test]
+fn error_unknown_struct_type_in_param() {
+    assert_snapshot!(check("fn f(p Nonexistent) {}"), @"
+    fn f(p Nonexistent) {}
+           ^^^^^^^^^^^ ─── Unknown type `Nonexistent`
+    ");
+}

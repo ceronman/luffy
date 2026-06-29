@@ -2774,3 +2774,235 @@ fn error_struct_field_name_keyword() {
                ^^^ ─── Expected field name, found `let` instead
     ");
 }
+
+// ── Mapping-literal tests ─────────────────────────────────────────────────────
+
+#[test]
+fn mapping_empty() {
+    // `{}` is an empty mapping literal (zero fields).
+    assert_snapshot!(parse_expr("{}"), @"Mapping");
+}
+
+#[test]
+fn mapping_single_field() {
+    assert_snapshot!(parse_expr("{ a = 1 }"), @"
+    Mapping
+    └── MappingField
+        ├── a
+        └── Int[1]
+    ");
+}
+
+#[test]
+fn mapping_multiple_fields() {
+    assert_snapshot!(parse_expr("{ a = 1, b = 2.5 }"), @"
+    Mapping
+    ├── MappingField
+    │   ├── a
+    │   └── Int[1]
+    └── MappingField
+        ├── b
+        └── Float[2.5]
+    ");
+}
+
+#[test]
+fn mapping_value_is_full_expression() {
+    // A field value is a full expression, not just a literal.
+    assert_snapshot!(parse_expr("{ a = 1 + 2 }"), @"
+    Mapping
+    └── MappingField
+        ├── a
+        └── Binary [+]
+            ├── Int[1]
+            └── Int[2]
+    ");
+}
+
+#[test]
+fn mapping_nested() {
+    // A mapping value can itself be a mapping (nested struct construction).
+    assert_snapshot!(parse_expr("{ a = { b = 1 } }"), @"
+    Mapping
+    └── MappingField
+        ├── a
+        └── Mapping
+            └── MappingField
+                ├── b
+                └── Int[1]
+    ");
+}
+
+#[test]
+fn mapping_value_is_collection() {
+    // A field value can be an array literal.
+    assert_snapshot!(parse_expr("{ items = [1, 2] }"), @"
+    Mapping
+    └── MappingField
+        ├── items
+        └── Collection
+            ├── Int[1]
+            └── Int[2]
+    ");
+}
+
+#[test]
+fn mapping_multiline_equals_single_line() {
+    // Newlines are insignificant inside a mapping literal: the fields are
+    // comma-separated, so the same mapping written across multiple lines parses
+    // identically to the single-line form.
+    let single = parse_expr("{ a = 1, b = 2 }");
+    let multi = parse_expr("{\n    a = 1,\n    b = 2\n}");
+    assert_eq!(single, multi);
+}
+
+#[test]
+fn error_mapping_field_missing_equals() {
+    // A mapping field requires `=` between the key and the value.
+    assert_snapshot!(parse_module("fn f() { let x P = { a 1 } }"), @"
+    fn f() { let x P = { a 1 } }
+                           ^ ─── Expected `=`, got `<Int>
+    ");
+}
+
+#[test]
+fn error_mapping_trailing_comma() {
+    // Unlike struct field *declarations* (which allow a trailing `;`), a mapping
+    // literal does NOT allow a trailing comma: after the comma the parser expects
+    // another field key.
+    assert_snapshot!(parse_module("fn f() { let x P = { a = 1, } }"), @"
+    fn f() { let x P = { a = 1, } }
+                                ^ ─── Expected field name, found `}` instead
+    ");
+}
+
+// ── Field (dot) expression tests ──────────────────────────────────────────────
+
+#[test]
+fn field_basic() {
+    assert_snapshot!(parse_expr("a.b"), @"
+    Field
+    ├── Var [a]
+    └── b
+    ");
+}
+
+#[test]
+fn field_chained() {
+    // `.` is left-associative: `a.b.c` is `(a.b).c`.
+    assert_snapshot!(parse_expr("a.b.c"), @"
+    Field
+    ├── Field
+    │   ├── Var [a]
+    │   └── b
+    └── c
+    ");
+}
+
+#[test]
+fn field_then_index() {
+    // `.` (precedence 8) binds tighter than `[` (precedence 7), so `a.b[0]` is
+    // `(a.b)[0]`.
+    assert_snapshot!(parse_expr("a.b[0]"), @"
+    Index
+    ├── Field
+    │   ├── Var [a]
+    │   └── b
+    └── Int[0]
+    ");
+}
+
+#[test]
+fn index_then_field() {
+    // Reading a field off an indexed element: `a[0].b` is `(a[0]).b`.
+    assert_snapshot!(parse_expr("a[0].b"), @"
+    Field
+    ├── Index
+    │   ├── Var [a]
+    │   └── Int[0]
+    └── b
+    ");
+}
+
+#[test]
+fn field_on_call_result() {
+    // A field can be read off a call result: `f().x`.
+    assert_snapshot!(parse_expr("f().x"), @"
+    Field
+    ├── Call
+    │   ├── Var [f]
+    │   └── Args
+    └── x
+    ");
+}
+
+#[test]
+fn call_on_field() {
+    // A field expression can be the callee of a call: `a.b()` parses as
+    // `(a.b)()`. (The compiler does not support non-`Variable` callees, but the
+    // parser accepts this shape.)
+    assert_snapshot!(parse_expr("a.b()"), @"
+    Call
+    ├── Field
+    │   ├── Var [a]
+    │   └── b
+    └── Args
+    ");
+}
+
+#[test]
+fn field_continues_across_newline_before_dot() {
+    // Like `[`, a `.` at the start of a new line continues the previous
+    // expression (it does not begin a new statement), so `a\n.b` is the single
+    // field access `a.b`.
+    let same_line = parse_expr("a.b");
+    let across_newline = parse_expr("a\n.b");
+    assert_eq!(same_line, across_newline);
+}
+
+#[test]
+fn field_assignment_target() {
+    // A field can be the target of an assignment.
+    assert_snapshot!(parse_stmt("x.a = 1"), @"
+    Assign
+    ├── Field
+    │   ├── Var [x]
+    │   └── a
+    └── Int[1]
+    ");
+}
+
+#[test]
+fn nested_field_assignment_target() {
+    assert_snapshot!(parse_stmt("x.a.b = 1"), @"
+    Assign
+    ├── Field
+    │   ├── Field
+    │   │   ├── Var [x]
+    │   │   └── a
+    │   └── b
+    └── Int[1]
+    ");
+}
+
+#[test]
+fn field_assignment_through_index() {
+    // Writing to a field reached through an index: `x[0].a = 1`.
+    assert_snapshot!(parse_stmt("x[0].a = 1"), @"
+    Assign
+    ├── Field
+    │   ├── Index
+    │   │   ├── Var [x]
+    │   │   └── Int[0]
+    │   └── a
+    └── Int[1]
+    ");
+}
+
+#[test]
+fn error_field_missing_name_uses_debug_formatting() {
+    assert_snapshot!(parse_module("fn f() { a. }"), @"
+    fn f() { a. }
+                ^ ─── Expected field name, found `}` instead
+    ");
+}

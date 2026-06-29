@@ -869,3 +869,204 @@ fn array_summed_in_loop() {
     "#;
     assert_snapshot!(run_main(body), @"10");
 }
+
+// ── Struct construction, field read/write execution ───────────────────────────
+//
+// Structs are top-level items, so these tests use `compile_and_run` with a full
+// program (imports + struct decls + `export fn main`) rather than `run_main`.
+
+#[test]
+fn struct_construct_and_read() {
+    let src = r#"
+        import fn print_int(x Int)
+        struct Point { x Int; y Int }
+        export fn main() {
+            let p Point = { x = 10, y = 20 }
+            print_int(p.x)
+            print_int(p.y)
+        }
+    "#;
+    assert_snapshot!(compile_and_run(src), @"
+    10
+    20
+    ");
+}
+
+#[test]
+fn struct_field_write() {
+    let src = r#"
+        import fn print_int(x Int)
+        struct Point { x Int; y Int }
+        export fn main() {
+            let p Point = { x = 1, y = 2 }
+            p.x = 99
+            print_int(p.x)
+            print_int(p.y)
+        }
+    "#;
+    assert_snapshot!(compile_and_run(src), @"
+    99
+    2
+    ");
+}
+
+#[test]
+fn struct_construct_fields_out_of_order() {
+    // The mapping lists fields in the opposite order from the declaration; the
+    // compiler must emit the field values in declaration order so the struct is
+    // built correctly.
+    let src = r#"
+        import fn print_int(x Int)
+        struct Point { x Int; y Int }
+        export fn main() {
+            let p Point = { y = 20, x = 10 }
+            print_int(p.x)
+            print_int(p.y)
+        }
+    "#;
+    assert_snapshot!(compile_and_run(src), @"
+    10
+    20
+    ");
+}
+
+#[test]
+fn struct_mixed_field_types() {
+    let src = r#"
+        import fn print_int(x Int)
+        import fn print_float(x Float)
+        import fn print_bool(x Bool)
+        struct Mixed { a Int; b Float; c Bool }
+        export fn main() {
+            let m Mixed = { a = 1, b = 2.5, c = true }
+            print_int(m.a)
+            print_float(m.b)
+            print_bool(m.c)
+        }
+    "#;
+    assert_snapshot!(compile_and_run(src), @"
+    1
+    2.5
+    true
+    ");
+}
+
+#[test]
+fn nested_struct_read_and_write() {
+    let src = r#"
+        import fn print_int(x Int)
+        struct Inner { v Int }
+        struct Outer { inner Inner; n Int }
+        export fn main() {
+            let o Outer = { inner = { v = 5 }, n = 9 }
+            print_int(o.inner.v)
+            print_int(o.n)
+            o.inner.v = 42
+            print_int(o.inner.v)
+        }
+    "#;
+    assert_snapshot!(compile_and_run(src), @"
+    5
+    9
+    42
+    ");
+}
+
+#[test]
+fn struct_with_array_field() {
+    let src = r#"
+        import fn print_int(x Int)
+        struct Bag { items Array[Int] }
+        export fn main() {
+            let b Bag = { items = [7, 8, 9] }
+            print_int(b.items[0])
+            print_int(b.items[2])
+            b.items[1] = 100
+            print_int(b.items[1])
+        }
+    "#;
+    assert_snapshot!(compile_and_run(src), @"
+    7
+    9
+    100
+    ");
+}
+
+#[test]
+fn struct_as_function_parameter() {
+    let src = r#"
+        import fn print_int(x Int)
+        struct Point { x Int; y Int }
+        fn sum(p Point) Int: p.x + p.y
+        export fn main() {
+            let p Point = { x = 3, y = 4 }
+            print_int(sum(p))
+        }
+    "#;
+    assert_snapshot!(compile_and_run(src), @"7");
+}
+
+#[test]
+fn struct_returned_from_function() {
+    // A struct is constructed inside a function (colon body) and returned.
+    let src = r#"
+        import fn print_int(x Int)
+        struct Point { x Int; y Int }
+        fn origin() Point: { x = 0, y = 0 }
+        export fn main() {
+            let p Point = origin()
+            print_int(p.x)
+            print_int(p.y)
+        }
+    "#;
+    assert_snapshot!(compile_and_run(src), @"
+    0
+    0
+    ");
+}
+
+#[test]
+fn struct_forward_reference_construction() {
+    // `Outer` is declared before `Inner` it depends on.
+    let src = r#"
+        import fn print_int(x Int)
+        struct Outer { inner Inner }
+        struct Inner { v Int }
+        export fn main() {
+            let o Outer = { inner = { v = 123 } }
+            print_int(o.inner.v)
+        }
+    "#;
+    assert_snapshot!(compile_and_run(src), @"123");
+}
+
+#[test]
+fn struct_has_reference_semantics() {
+    // Struct values are GC references: passing a struct to a function and
+    // mutating a field there is visible to the caller. (Worth being explicit
+    // about — a reader might expect value/copy semantics.)
+    let src = r#"
+        import fn print_int(x Int)
+        struct Box { v Int }
+        fn bump(b Box) { b.v = b.v + 1 }
+        export fn main() {
+            let b Box = { v = 1 }
+            bump(b)
+            print_int(b.v)
+        }
+    "#;
+    assert_snapshot!(compile_and_run(src), @"2");
+}
+
+#[test]
+fn empty_struct_constructs() {
+    let src = r#"
+        import fn print_int(x Int)
+        struct Empty {}
+        export fn main() {
+            let e Empty = {}
+            print_int(1)
+        }
+    "#;
+    assert_snapshot!(compile_and_run(src), @"1");
+}

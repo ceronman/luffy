@@ -1167,3 +1167,135 @@ fn early_return_in_if_branch() {
     )
     ");
 }
+
+// ── Struct construction and field access lowering ─────────────────────────────
+
+#[test]
+fn struct_construction_lowers_to_struct_new() {
+    // A mapping literal lowers to: push each field value (in *declaration*
+    // order), then `struct.new`. The struct type is created before the function
+    // type that references it.
+    let src = r#"
+        struct Point { x Int; y Int }
+        fn make() Point: { x = 1, y = 2 }
+    "#;
+    assert_snapshot!(compile_to_wat(src), @"
+    (module
+      (type (;0;) (struct (field (mut i64)) (field (mut i64))))
+      (type (;1;) (func (result (ref null 0))))
+      (func (;0;) (type 1) (result (ref null 0))
+        i64.const 1
+        i64.const 2
+        struct.new 0
+      )
+    )
+    ");
+}
+
+#[test]
+fn struct_construction_reorders_fields_to_declaration_order() {
+    // The mapping lists `y` before `x`, but the compiler emits values in the
+    // struct's declaration order (x then y), so the constants appear as 1, 2.
+    let src = r#"
+        struct Point { x Int; y Int }
+        fn make() Point: { y = 2, x = 1 }
+    "#;
+    assert_snapshot!(compile_to_wat(src), @"
+    (module
+      (type (;0;) (struct (field (mut i64)) (field (mut i64))))
+      (type (;1;) (func (result (ref null 0))))
+      (func (;0;) (type 1) (result (ref null 0))
+        i64.const 1
+        i64.const 2
+        struct.new 0
+      )
+    )
+    ");
+}
+
+#[test]
+fn struct_field_read_lowers_to_struct_get() {
+    // Reading `p.y` lowers to: push the struct, then `struct.get type field`.
+    // `y` is field index 1.
+    let src = r#"
+        struct Point { x Int; y Int }
+        fn get_y(p Point) Int: p.y
+    "#;
+    assert_snapshot!(compile_to_wat(src), @"
+    (module
+      (type (;0;) (struct (field (mut i64)) (field (mut i64))))
+      (type (;1;) (func (param (ref null 0)) (result i64)))
+      (func (;0;) (type 1) (param (ref null 0)) (result i64)
+        local.get 0
+        struct.get 0 1
+      )
+    )
+    ");
+}
+
+#[test]
+fn struct_field_write_lowers_to_struct_set() {
+    // Writing `p.x = 7` lowers to: push the struct, push the value, then
+    // `struct.set type field` (no trailing drop, since assignment is Unit).
+    let src = r#"
+        struct Point { x Int; y Int }
+        fn set_x(p Point) { p.x = 7 }
+    "#;
+    assert_snapshot!(compile_to_wat(src), @"
+    (module
+      (type (;0;) (struct (field (mut i64)) (field (mut i64))))
+      (type (;1;) (func (param (ref null 0))))
+      (func (;0;) (type 1) (param (ref null 0))
+        local.get 0
+        i64.const 7
+        struct.set 0 0
+      )
+    )
+    ");
+}
+
+#[test]
+fn struct_mixed_int_and_bool_fields() {
+    // Field storage types follow the value types: Int -> i64, Bool -> i32.
+    // (Float fields are exercised in the emit tests; wasmprinter renders float
+    // constants in hex, so they are avoided here.)
+    let src = r#"
+        struct M { a Int; b Bool }
+        fn make() M: { a = 1, b = true }
+    "#;
+    assert_snapshot!(compile_to_wat(src), @"
+    (module
+      (type (;0;) (struct (field (mut i64)) (field (mut i32))))
+      (type (;1;) (func (result (ref null 0))))
+      (func (;0;) (type 1) (result (ref null 0))
+        i64.const 1
+        i32.const 1
+        struct.new 0
+      )
+    )
+    ");
+}
+
+#[test]
+fn nested_struct_creates_inner_type_first() {
+    // `Outer` has an `Inner`-typed field, so the inner struct type is created
+    // before the outer one (no forward references), and the field is a nullable
+    // reference to the inner type.
+    let src = r#"
+        struct Inner { v Int }
+        struct Outer { inner Inner }
+        fn make() Outer: { inner = { v = 5 } }
+    "#;
+    assert_snapshot!(compile_to_wat(src), @"
+    (module
+      (type (;0;) (struct (field (mut i64))))
+      (type (;1;) (struct (field (mut (ref null 0)))))
+      (type (;2;) (func (result (ref null 1))))
+      (func (;0;) (type 2) (result (ref null 1))
+        i64.const 5
+        struct.new 0
+        struct.new 1
+      )
+    )
+    ");
+}
