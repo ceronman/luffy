@@ -3,6 +3,7 @@ pub type TypeIdx = Idx;
 pub type LocalIdx = Idx;
 pub type FuncIdx = Idx;
 pub type LabelIdx = Idx;
+pub type FieldIdx = Idx;
 
 pub struct Module {
     pub types: Vec<Type>,
@@ -101,6 +102,8 @@ pub enum Instruction {
     ArrayNewFixed { type_idx: TypeIdx, len: u32 },
 
     StructNew(TypeIdx),
+    StructGet { type_idx: TypeIdx, field_idx: u32 },
+    StructSet { type_idx: TypeIdx, field_idx: u32 },
 
     Call(FuncIdx),
     End,

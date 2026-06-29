@@ -113,6 +113,20 @@ impl ir::Instruction {
                 array_size: *len,
             },
             ir::Instruction::StructNew(idx) => Instruction::StructNew(*idx),
+            ir::Instruction::StructSet {
+                type_idx,
+                field_idx,
+            } => Instruction::StructSet {
+                struct_type_index: *type_idx,
+                field_index: *field_idx,
+            },
+            ir::Instruction::StructGet {
+                type_idx,
+                field_idx,
+            } => Instruction::StructGet {
+                struct_type_index: *type_idx,
+                field_index: *field_idx,
+            },
             ir::Instruction::I64Const(v) => Instruction::I64Const(*v),
             ir::Instruction::I64Add => Instruction::I64Add,
             ir::Instruction::I64Sub => Instruction::I64Sub,

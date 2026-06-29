@@ -283,7 +283,7 @@ The import module name is hardcoded as `"js"`.
 
 ### Wasm types (`Compiler::Types`)
 
-The compiler interns Wasm types in a `Types` helper keyed by the semantic `Type` (`unique_types: HashMap<Type, TypeIdx>`):
+The compiler interns Wasm types in a `WasmTypes` helper keyed by the semantic `Type` (`unique_types: HashMap<Type, TypeIdx>`):
 
 - `val_ty(&Type) -> ir::ValType` lowers a *value* type: `Int→i64`, `Float→f64`, `Bool→i32`, and `Array[T]→Ref(idx)` (creating the array type on demand). `Unit`/`Never`/`Function` are not value types (`todo!()`).
 - `wasm_ty(&Type) -> ir::Type` builds a *defined* type for the type section: `Function` → `(func ...)`, `Array[T]` → `(array (mut T'))`. Element/param/result types are lowered with `val_ty`, so a nested `Array[Array[Int]]` creates the inner array type **before** the outer one (no forward references).

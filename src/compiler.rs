@@ -1,18 +1,19 @@
 #[cfg(test)]
 mod test;
 
-use crate::semantic::{Declaration, DeclarationId, DeclarationKind, Semantics, Type};
+use crate::semantic::{Declaration, DeclarationId, DeclarationKind, Semantics, StructField, Type};
+use crate::source::Symbol;
 use crate::{ast, ir};
 use std::collections::{HashMap, VecDeque};
+use std::rc::Rc;
 
-#[derive(Default)]
 struct Compiler {
-    semantics: Semantics,
+    semantics: Rc<Semantics>,
 
     local_addresses: HashMap<DeclarationId, LocalAddress>, // TODO: Unify both addresses?
     func_addresses: HashMap<DeclarationId, FuncAddress>,
     loops: Loops,
-    wasm_types: Types,
+    wasm_types: WasmTypes,
 }
 
 #[derive(Clone, Copy)]
@@ -76,22 +77,7 @@ impl Compiler {
                         .insert(declaration.id, FuncAddress { idx, ty_idx });
                 }
                 DeclarationKind::Local { func_id } => {
-                    let ty = match &declaration.ty {
-                        Type::Array { .. } => {
-                            let ty_idx = self.wasm_types.type_idx(&declaration.ty);
-                            ir::ValType::Ref(ty_idx)
-                        }
-                        Type::Reference { name } => {
-                            let struct_ty = self
-                                .semantics
-                                .struct_types
-                                .get(name)
-                                .expect("struct type not found");
-                            let ty_idx = self.wasm_types.type_idx(struct_ty);
-                            ir::ValType::Ref(ty_idx)
-                        }
-                        _ => self.wasm_types.val_ty(&declaration.ty),
-                    };
+                    let ty = self.wasm_types.val_ty(&declaration.ty);
                     let idx = *local_indices
                         .entry(*func_id)
                         .and_modify(|count| *count += 1)
@@ -256,25 +242,9 @@ impl Compiler {
                 });
             }
             ast::ExprKind::Mapping { fields } => {
-                let Type::Reference { name } = self.node_type(expr.node) else {
-                    panic!("Expected reference type");
-                };
-
-                let struct_ty = self
-                    .semantics
-                    .struct_types
-                    .get(&name)
-                    .expect("struct type not found");
-
-                let type_idx = self.wasm_types.type_idx(struct_ty);
-
-                let Type::Struct {
-                    fields: ty_fields, ..
-                } = struct_ty.clone()
-                else {
-                    panic!("Expected struct type");
-                };
-
+                let ty = self.node_type(expr.node);
+                let type_idx = self.wasm_types.type_idx(&ty);
+                let ty_fields = self.wasm_types.struct_fields(&ty).to_vec(); // TODO: optimize
                 for ty_field in ty_fields {
                     // TODO: Consider using indexmap for fields
                     let field = fields
@@ -388,8 +358,16 @@ impl Compiler {
                     self.expr(ins, value);
                     ins.push(ir::Instruction::ArraySet(ty_idx));
                 }
-                ast::ExprKind::Field { .. } => {
-                    todo!()
+                ast::ExprKind::Field { expr, field } => {
+                    let ty = self.node_type(expr.node);
+                    let type_idx = self.wasm_types.type_idx(&ty);
+                    let field_idx = self.wasm_types.struct_field_idx(&ty, &field.symbol);
+                    self.expr(ins, expr);
+                    self.expr(ins, value);
+                    ins.push(ir::Instruction::StructSet {
+                        type_idx,
+                        field_idx,
+                    });
                 }
                 _ => panic!("Invalid assignment target"),
             },
@@ -401,8 +379,15 @@ impl Compiler {
                 ins.push(ir::Instruction::I32WrapI64);
                 ins.push(ir::Instruction::ArrayGet(ty));
             }
-            ast::ExprKind::Field { .. } => {
-                todo!()
+            ast::ExprKind::Field { expr, field } => {
+                let ty = self.node_type(expr.node);
+                let type_idx = self.wasm_types.type_idx(&ty);
+                let field_idx = self.wasm_types.struct_field_idx(&ty, &field.symbol);
+                self.expr(ins, expr);
+                ins.push(ir::Instruction::StructGet {
+                    type_idx,
+                    field_idx,
+                });
             }
             ast::ExprKind::If {
                 condition,
@@ -529,24 +514,32 @@ impl Compiler {
     }
 }
 
-#[derive(Default)]
-struct Types {
+struct WasmTypes {
+    semantics: Rc<Semantics>,
     unique_types: HashMap<Type, ir::TypeIdx>,
     types: Vec<ir::Type>,
 }
 
-impl Types {
+impl WasmTypes {
+    fn new(semantics: Rc<Semantics>) -> Self {
+        Self {
+            semantics,
+            unique_types: HashMap::new(),
+            types: vec![],
+        }
+    }
+
     fn val_ty(&mut self, ty: &Type) -> ir::ValType {
         match ty {
             Type::Int => ir::ValType::I64,
             Type::Float => ir::ValType::F64,
             Type::Bool => ir::ValType::I32,
-            Type::Array { .. } => {
+            Type::Array { .. } | Type::Reference { .. } => {
                 let wasm_ty = self.wasm_ty(ty);
                 let ty_idx = self.get_or_create(ty, wasm_ty);
                 ir::ValType::Ref(ty_idx)
             }
-            _ => todo!(),
+            _ => panic!("Type does not have equivalent Wasm value type"),
         }
     }
 
@@ -570,6 +563,15 @@ impl Types {
                     .map(|f| ir::StorageType::Val(self.val_ty(&f.ty)))
                     .collect(),
             },
+            Type::Reference { name } => {
+                let struct_ty = self
+                    .semantics
+                    .struct_types
+                    .get(name)
+                    .cloned()
+                    .expect("struct type not found");
+                self.wasm_ty(&struct_ty)
+            }
             _ => panic!("Type is not part of types section"),
         }
     }
@@ -588,6 +590,41 @@ impl Types {
     fn type_idx(&mut self, ty: &Type) -> ir::TypeIdx {
         let wasm_ty = self.wasm_ty(ty);
         self.get_or_create(ty, wasm_ty)
+    }
+
+    fn struct_field_idx(&mut self, ty: &Type, field_name: &Symbol) -> ir::FieldIdx {
+        let Type::Reference { name: ref_name } = ty else {
+            panic!("Type is not a reference")
+        };
+        let Some(Type::Struct {
+            name: struct_name,
+            fields,
+        }) = self.semantics.struct_types.get(ref_name)
+        else {
+            panic!("Struct type not found")
+        };
+
+        debug_assert!(struct_name == ref_name);
+
+        let Some(idx) = fields.iter().position(|field| field.name == *field_name) else {
+            panic!("Field not found")
+        };
+        idx as ir::FieldIdx
+    }
+
+    fn struct_fields(&self, ty: &Type) -> &[StructField] {
+        let Type::Reference { name: ref_name } = ty else {
+            panic!("Type is not a reference")
+        };
+        let Some(Type::Struct {
+            name: struct_name,
+            fields,
+        }) = self.semantics.struct_types.get(ref_name)
+        else {
+            panic!("Struct type not found")
+        };
+        debug_assert!(struct_name == ref_name);
+        fields
     }
 }
 
@@ -639,9 +676,13 @@ impl Loops {
 }
 
 pub fn compile(module: &ast::Module, semantics: Semantics) -> ir::Module {
+    let semantics = Rc::from(semantics);
     let mut compiler = Compiler {
-        semantics,
-        ..Default::default()
+        semantics: Rc::clone(&semantics),
+        wasm_types: WasmTypes::new(Rc::clone(&semantics)),
+        local_addresses: Default::default(),
+        func_addresses: Default::default(),
+        loops: Default::default(),
     };
     compiler.module(module)
 }
