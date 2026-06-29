@@ -456,6 +456,7 @@ impl Resolver {
                 match &target.kind {
                     ExprKind::Variable { .. } => {}
                     ExprKind::Index { .. } => {}
+                    ExprKind::Field { .. } => {}
                     _ => return resolve_err(target.node.span, "Invalid assignment target"),
                 };
                 let expr_ty = self.expr(value, func_id, Some(&target_ty))?;
