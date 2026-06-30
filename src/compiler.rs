@@ -243,7 +243,7 @@ impl Compiler {
             }
             ast::ExprKind::Mapping { fields } => {
                 let ty = self.node_type(expr.node);
-                let type_idx = self.wasm_types.type_idx(&ty);
+                let type_idx = self.wasm_types.ref_type_idx(&ty);
                 let ty_fields = self.wasm_types.struct_fields(&ty).to_vec(); // TODO: optimize
                 for ty_field in ty_fields {
                     // TODO: Consider using indexmap for fields
@@ -360,7 +360,7 @@ impl Compiler {
                 }
                 ast::ExprKind::Field { expr, field } => {
                     let ty = self.node_type(expr.node);
-                    let type_idx = self.wasm_types.type_idx(&ty);
+                    let type_idx = self.wasm_types.ref_type_idx(&ty);
                     let field_idx = self.wasm_types.struct_field_idx(&ty, &field.symbol);
                     self.expr(ins, expr);
                     self.expr(ins, value);
@@ -381,7 +381,7 @@ impl Compiler {
             }
             ast::ExprKind::Field { expr, field } => {
                 let ty = self.node_type(expr.node);
-                let type_idx = self.wasm_types.type_idx(&ty);
+                let type_idx = self.wasm_types.ref_type_idx(&ty);
                 let field_idx = self.wasm_types.struct_field_idx(&ty, &field.symbol);
                 self.expr(ins, expr);
                 ins.push(ir::Instruction::StructGet {
@@ -529,22 +529,12 @@ impl WasmTypes {
         }
     }
 
-    fn val_ty(&mut self, ty: &Type) -> ir::ValType {
-        match ty {
-            Type::Int => ir::ValType::I64,
-            Type::Float => ir::ValType::F64,
-            Type::Bool => ir::ValType::I32,
-            Type::Array { .. } | Type::Reference { .. } => {
-                let wasm_ty = self.wasm_ty(ty);
-                let ty_idx = self.get_or_create(ty, wasm_ty);
-                ir::ValType::Ref(ty_idx)
-            }
-            _ => panic!("Type does not have equivalent Wasm value type"),
+    fn type_idx(&mut self, ty: &Type) -> ir::TypeIdx {
+        if let Some(idx) = self.unique_types.get(ty) {
+            return *idx;
         }
-    }
 
-    fn wasm_ty(&mut self, ty: &Type) -> ir::Type {
-        match ty {
+        let wasm_ty = match ty {
             Type::Function { params, ret } => {
                 let params = params.iter().map(|p| self.val_ty(p)).collect::<Vec<_>>();
                 let results = if let Type::Unit = ret.as_ref() {
@@ -563,23 +553,8 @@ impl WasmTypes {
                     .map(|f| ir::StorageType::Val(self.val_ty(&f.ty)))
                     .collect(),
             },
-            Type::Reference { name } => {
-                let struct_ty = self
-                    .semantics
-                    .struct_types
-                    .get(name)
-                    .cloned()
-                    .expect("struct type not found");
-                self.wasm_ty(&struct_ty)
-            }
             _ => panic!("Type is not part of types section"),
-        }
-    }
-
-    fn get_or_create(&mut self, ty: &Type, wasm_ty: ir::Type) -> ir::TypeIdx {
-        if let Some(idx) = self.unique_types.get(ty) {
-            return *idx;
-        }
+        };
 
         let idx = self.types.len() as ir::TypeIdx;
         self.types.push(wasm_ty);
@@ -587,9 +562,34 @@ impl WasmTypes {
         idx
     }
 
-    fn type_idx(&mut self, ty: &Type) -> ir::TypeIdx {
-        let wasm_ty = self.wasm_ty(ty);
-        self.get_or_create(ty, wasm_ty)
+    fn val_ty(&mut self, ty: &Type) -> ir::ValType {
+        match ty {
+            Type::Int => ir::ValType::I64,
+            Type::Float => ir::ValType::F64,
+            Type::Bool => ir::ValType::I32,
+            Type::Array { .. } => {
+                let ty_idx = self.type_idx(ty);
+                ir::ValType::Ref(ty_idx)
+            }
+            Type::Reference { name } => {
+                let struct_ty = self
+                    .semantics
+                    .struct_types
+                    .get(name)
+                    .cloned()
+                    .expect("struct type not found");
+                let ty_idx = self.type_idx(&struct_ty);
+                ir::ValType::Ref(ty_idx)
+            }
+            _ => panic!("Type does not have equivalent Wasm value type"),
+        }
+    }
+
+    fn ref_type_idx(&mut self, ty: &Type) -> ir::TypeIdx {
+        let ir::ValType::Ref(type_idx) = self.val_ty(ty) else {
+            panic!("Type is not a reference type");
+        };
+        type_idx
     }
 
     fn struct_field_idx(&mut self, ty: &Type, field_name: &Symbol) -> ir::FieldIdx {

@@ -15,24 +15,11 @@ fn main() {
 
         struct Foo {
             a Int
-            b Float
-            c Bool
-            d Bar
-        }
-
-        struct Bar {
-            x Array[Int]
+            next Foo
         }
 
         export fn main() {
-            let x Foo = { a = 1, b = 1.0, c = true, d = { x = [1, 2] } }
-            let y Int = 1
-            print_int(x.d.x[y])
-            x.c = false
-            x.a = 100
-            print_int(x.a)
-            x.d.x[y] = 42
-            print_int(x.d.x[y])
+            let x Foo
         }
     "#;
 

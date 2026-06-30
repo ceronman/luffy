@@ -287,7 +287,7 @@ The compiler interns Wasm types in a `WasmTypes` helper keyed by the semantic `T
 
 - `val_ty(&Type) -> ir::ValType` lowers a *value* type: `Int→i64`, `Float→f64`, `Bool→i32`, and `Array[T]→Ref(idx)` (creating the array type on demand). `Unit`/`Never`/`Function` are not value types (`todo!()`).
 - `wasm_ty(&Type) -> ir::Type` builds a *defined* type for the type section: `Function` → `(func ...)`, `Array[T]` → `(array (mut T'))`. Element/param/result types are lowered with `val_ty`, so a nested `Array[Array[Int]]` creates the inner array type **before** the outer one (no forward references).
-- `type_idx`/`get_or_create` dedupe by semantic `Type`, so two functions with the same signature — or two `Array[T]` with the same element type — share one type-section entry.
+- `type_idx` dedupe by semantic `Type`, so two functions with the same signature — or two `Array[T]` with the same element type — share one type-section entry.
 
 ---
 
