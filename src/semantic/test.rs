@@ -1324,6 +1324,16 @@ fn error_mapping_unknown_field() {
 }
 
 #[test]
+fn error_mapping_duplicate_field() {
+    // A mapping literal that assigns the same field twice is rejected at the
+    // second occurrence of the key.
+    assert_snapshot!(check("struct P { x Int } fn make() P: { x = 1, x = 2 }"), @"
+    struct P { x Int } fn make() P: { x = 1, x = 2 }
+                                             ^ ─── Duplicate field 'x'
+    ");
+}
+
+#[test]
 fn error_mapping_wrong_field_type() {
     assert_snapshot!(check("struct P { x Int } fn make() P: { x = true }"), @"
     struct P { x Int } fn make() P: { x = true }
@@ -1338,7 +1348,7 @@ fn error_mapping_without_expected_type() {
     // collection inference path.)
     assert_snapshot!(check("fn f() { { a = 1 } }"), @"
     fn f() { { a = 1 } }
-             ^^^^^^^^^ ─── Not enough information to infer type of collection
+             ^^^^^^^^^ ─── Not enough information to infer type of mapping
     ");
 }
 

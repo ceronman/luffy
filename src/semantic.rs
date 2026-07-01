@@ -324,7 +324,7 @@ impl Resolver {
                 let Some(mapping_ty) = expected_ty else {
                     return type_err(
                         expr.node.span,
-                        "Not enough information to infer type of collection",
+                        "Not enough information to infer type of mapping",
                     );
                 };
 
@@ -342,7 +342,15 @@ impl Resolver {
                     return type_err(expr.node.span, format!("Unknown type '{name}'"));
                 };
 
+                // TODO: is there a way to optimize this?
+                let mut seen = HashSet::new();
                 for MappingField { key, value, .. } in fields {
+                    if seen.contains(&key.symbol) {
+                        return type_err(
+                            key.node.span,
+                            format!("Duplicate field '{}'", key.symbol),
+                        );
+                    }
                     let Some(ty_field) = ty_fields.iter().position(|f| f.name == key.symbol) else {
                         return type_err(
                             key.node.span,
@@ -352,6 +360,7 @@ impl Resolver {
                     let ty_field = ty_fields.swap_remove(ty_field);
                     let value_ty = self.expr(value, func_id, Some(&ty_field.ty))?;
                     unify_ty(value.node.span, &ty_field.ty, &value_ty)?;
+                    seen.insert(ty_field.name);
                 }
 
                 if let Some(missing_field) = ty_fields.first() {
