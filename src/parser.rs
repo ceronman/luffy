@@ -7,10 +7,9 @@ use crate::ast::{
     BinOp, BinOpKind, Block, BlockKind, Expr, ExprKind, Field, Identifier, Item, ItemKind,
     LiteralKind, MappingField, Module, Node, Param, Stmt, StmtKind, TypeRef, UnOp, UnOpKind,
 };
-use crate::error::{CompilerError, ErrorKind};
+use crate::error::{CompilerError, parse_err};
 use crate::lexer::{Lexer, Token, TokenKind};
 use crate::source::Span;
-use std::fmt::Debug;
 
 struct Parser<'src> {
     source: &'src str,
@@ -20,14 +19,6 @@ struct Parser<'src> {
 }
 
 pub type Result<T> = std::result::Result<T, CompilerError>;
-
-fn error<T: Debug>(span: Span, message: impl Into<String>) -> Result<T> {
-    Err(CompilerError {
-        kind: ErrorKind::Parse,
-        msg: message.into(),
-        span,
-    })
-}
 
 impl<'src> Parser<'src> {
     fn new(source: &'src str) -> Self {
@@ -62,7 +53,7 @@ impl<'src> Parser<'src> {
             TokenKind::Export | TokenKind::Fn => self.function(),
             TokenKind::Import => self.import(),
             TokenKind::Struct => self.struct_(),
-            _ => error(
+            _ => parse_err(
                 self.current.span,
                 format!(
                     "Expected item declaration, found {} instead",
@@ -251,7 +242,7 @@ impl<'src> Parser<'src> {
             TokenKind::Return => self.return_expr()?,
 
             other_kind => {
-                return error(self.current.span, format!("Unexpected {}", other_kind));
+                return parse_err(self.current.span, format!("Unexpected {}", other_kind));
             }
         };
 
@@ -364,7 +355,7 @@ impl<'src> Parser<'src> {
 
     fn unary_expr(&mut self) -> Result<Expr> {
         let Some(precedence) = self.prefix_precedence() else {
-            return error(self.current.span, "Unknown infix precedence");
+            return parse_err(self.current.span, "Unknown infix precedence");
         };
         let operator = self.unary_operator()?;
         let right = self.expression_precedence(precedence)?;
@@ -428,7 +419,7 @@ impl<'src> Parser<'src> {
             TokenKind::GreaterEqual => BinOpKind::Ge,
             TokenKind::And => BinOpKind::And,
             TokenKind::Or => BinOpKind::Or,
-            _ => return error(op.span, format!("Invalid binary operator {}", op.kind)),
+            _ => return parse_err(op.span, format!("Invalid binary operator {}", op.kind)),
         };
         self.advance();
         Ok(BinOp {
@@ -442,7 +433,7 @@ impl<'src> Parser<'src> {
         let kind = match op.kind {
             TokenKind::Minus => UnOpKind::Neg,
             TokenKind::Not => UnOpKind::Not,
-            _ => return error(op.span, format!("Invalid unary operator {}", op.kind)),
+            _ => return parse_err(op.span, format!("Invalid unary operator {}", op.kind)),
         };
         self.advance();
         Ok(UnOp {
@@ -525,7 +516,7 @@ impl<'src> Parser<'src> {
                 }
             }
             _ => {
-                return error(token.span, format!("Expected literal, got {}", token.kind));
+                return parse_err(token.span, format!("Expected literal, got {}", token.kind));
             }
         };
         Ok(Expr {
@@ -539,7 +530,7 @@ impl<'src> Parser<'src> {
         let text = self.slice(token.span);
         let value = match numbers::parse_int_literal(text) {
             Ok(v) => v,
-            Err(msg) => return error(token.span, msg),
+            Err(msg) => return parse_err(token.span, msg),
         };
         Ok(value)
     }
@@ -549,7 +540,7 @@ impl<'src> Parser<'src> {
         let text = self.slice(token.span);
         let value = match numbers::parse_float_literal(text) {
             Ok(v) => v,
-            Err(msg) => return error(token.span, msg),
+            Err(msg) => return parse_err(token.span, msg),
         };
         Ok(value)
     }
@@ -603,7 +594,7 @@ impl<'src> Parser<'src> {
         match self.current.kind {
             TokenKind::LBrace => self.braces_block(),
             TokenKind::Colon => self.expr_block(),
-            _ => error(
+            _ => parse_err(
                 self.current.span,
                 format!(
                     "Expected `{{` or `:` for {context}, found {} instead",
@@ -709,7 +700,7 @@ impl<'src> Parser<'src> {
                 TokenKind::Semicolon | TokenKind::RBrace | TokenKind::Eof
             )
         {
-            return error(
+            return parse_err(
                 self.current.span,
                 format!(
                     "Expected newline or `;` between {kind}, found {}",
@@ -749,7 +740,7 @@ impl<'src> Parser<'src> {
             self.advance();
             return Ok(token);
         }
-        error(self.current.span, msg(token))
+        parse_err(self.current.span, msg(token))
     }
 
     fn node(&mut self, start: Span, end: Span) -> Node {

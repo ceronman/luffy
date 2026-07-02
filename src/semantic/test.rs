@@ -828,7 +828,7 @@ fn error_array_no_arguments() {
     // `Array` with no arguments at all is not a complete type.
     assert_snapshot!(check("fn f(x Array) {}"), @"
     fn f(x Array) {}
-           ^^^^^ ─── Invalid array type
+           ^^^^^ ─── Array type requires one type argument, 0 given
     ");
 }
 
@@ -837,7 +837,7 @@ fn error_array_too_many_arguments() {
     // Exactly one argument is required; a second is invalid.
     assert_snapshot!(check("fn f(x Array[Int, Int]) {}"), @"
     fn f(x Array[Int, Int]) {}
-           ^^^^^^^^^^^^^^^ ─── Invalid array type
+           ^^^^^^^^^^^^^^^ ─── Array type requires one type argument, 2 given
     ");
 }
 

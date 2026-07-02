@@ -1,4 +1,5 @@
 use crate::source::Span;
+use std::fmt::Debug;
 
 #[derive(Debug)]
 pub struct CompilerError {
@@ -13,4 +14,37 @@ pub enum ErrorKind {
     Resolve,
     Type,
     Compile,
+    Internal,
+}
+
+pub fn parse_err<T: Debug>(span: Span, message: impl Into<String>) -> crate::parser::Result<T> {
+    Err(CompilerError {
+        kind: ErrorKind::Parse,
+        msg: message.into(),
+        span,
+    })
+}
+
+pub fn resolve_err<T: Debug>(span: Span, message: impl Into<String>) -> crate::parser::Result<T> {
+    Err(CompilerError {
+        kind: ErrorKind::Resolve,
+        msg: message.into(),
+        span,
+    })
+}
+
+pub fn type_err<T: Debug>(span: Span, message: impl Into<String>) -> crate::parser::Result<T> {
+    Err(CompilerError {
+        kind: ErrorKind::Type,
+        msg: message.into(),
+        span,
+    })
+}
+
+pub fn internal_err<T: Debug>(span: Span, message: impl Into<String>) -> crate::parser::Result<T> {
+    Err(CompilerError {
+        kind: ErrorKind::Internal,
+        msg: message.into(),
+        span,
+    })
 }

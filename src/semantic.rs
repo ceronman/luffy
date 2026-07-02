@@ -5,7 +5,7 @@ use crate::ast::{
     BinOpKind, Block, BlockKind, Expr, ExprKind, Identifier, ItemKind, LiteralKind, MappingField,
     Module, Node, NodeId, Param, Stmt, StmtKind, TypeRef, UnOpKind,
 };
-use crate::error::{CompilerError, ErrorKind};
+use crate::error::{CompilerError, internal_err, resolve_err, type_err};
 use crate::source::{Span, Symbol};
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::fmt::{Debug, Display, Formatter};
@@ -21,7 +21,7 @@ pub struct Declaration {
 }
 
 pub enum DeclarationKind {
-    Local { func_id: DeclarationId }, // TODO: Make named field
+    Local { func_id: DeclarationId },
     Function,
     Import,
     Struct,
@@ -39,7 +39,7 @@ pub enum Type {
     },
     Struct {
         name: Symbol,
-        fields: Vec<StructField>, // TODO: Make cloning cheap
+        fields: Rc<[StructField]>,
     },
     Reference {
         name: Symbol,
@@ -109,22 +109,6 @@ struct Resolver {
 }
 
 pub type Result<T> = std::result::Result<T, CompilerError>;
-
-fn resolve_err<T: Debug>(span: Span, message: impl Into<String>) -> crate::parser::Result<T> {
-    Err(CompilerError {
-        kind: ErrorKind::Resolve,
-        msg: message.into(),
-        span,
-    })
-}
-
-fn type_err<T: Debug>(span: Span, message: impl Into<String>) -> crate::parser::Result<T> {
-    Err(CompilerError {
-        kind: ErrorKind::Type,
-        msg: message.into(),
-        span,
-    })
-}
 
 fn unify_ty(span: Span, expected: &Type, actual: &Type) -> crate::parser::Result<Type> {
     if actual == expected {
@@ -196,12 +180,16 @@ impl Resolver {
                 }
                 let ty = Type::Struct {
                     name: name.symbol.clone(),
-                    fields: ty_fields,
+                    fields: Rc::from(ty_fields),
                 };
                 self.declare(name, ty.clone(), DeclarationKind::Struct)?;
-                self.semantics
-                    .struct_types
-                    .insert(self.incomplete_types.take(&name.symbol).unwrap(), ty); // TODO: Unwrap
+                let Some(option) = self.incomplete_types.take(&name.symbol) else {
+                    return internal_err(
+                        name.node.span,
+                        "Struct definition `{}` does not have an incomplete type",
+                    );
+                };
+                self.semantics.struct_types.insert(option, ty);
             }
         }
 
@@ -335,12 +323,13 @@ impl Resolver {
                     );
                 };
                 let Some(Type::Struct {
-                    fields: mut ty_fields,
-                    ..
-                }) = self.semantics.struct_types.get(name).cloned()
+                    fields: ty_fields, ..
+                }) = self.semantics.struct_types.get(name)
                 else {
                     return type_err(expr.node.span, format!("Unknown type '{name}'"));
                 };
+
+                let mut ty_fields = ty_fields.to_vec();
 
                 // TODO: is there a way to optimize this?
                 let mut seen = HashSet::new();
@@ -461,7 +450,6 @@ impl Resolver {
             }
             ExprKind::Assignment { target, value } => {
                 let target_ty = self.expr(target, func_id, None)?;
-                // TODO: Make a more sophisticated LValue logic?
                 match &target.kind {
                     ExprKind::Variable { .. } => {}
                     ExprKind::Index { .. } => {}
@@ -700,17 +688,21 @@ impl Resolver {
             "Bool" => Ok(Type::Bool),
             "Unit" => Ok(Type::Unit),
             "Never" => Ok(Type::Never),
-            "Array" => {
-                match type_ref.args.as_slice() {
-                    [inner] => {
-                        let inner = self.ty_ref(inner)?;
-                        Ok(Type::Array {
-                            ty: Rc::from(inner),
-                        })
-                    }
-                    _ => resolve_err(type_ref.node.span, "Invalid array type"), // TODO: Improve error message
+            "Array" => match type_ref.args.as_slice() {
+                [inner] => {
+                    let inner = self.ty_ref(inner)?;
+                    Ok(Type::Array {
+                        ty: Rc::from(inner),
+                    })
                 }
-            }
+                _ => resolve_err(
+                    type_ref.node.span,
+                    format!(
+                        "Array type requires one type argument, {} given",
+                        type_ref.args.len()
+                    ),
+                ),
+            },
             name => {
                 if self.incomplete_types.contains(&type_ref.name.symbol)
                     || self
