@@ -118,10 +118,17 @@ fn unify_ty(span: Span, expected: &Type, actual: &Type) -> crate::parser::Result
     } else if expected.is_never() {
         Ok(actual.clone())
     } else {
-        type_err(
-            span,
-            format!("Type mismatch: expected '{expected}', found '{actual}'"),
-        )
+        if expected.is_unit() {
+            type_err(
+                span,
+                format!("Type mismatch: expected no value, found '{actual}'"),
+            )
+        } else {
+            type_err(
+                span,
+                format!("Type mismatch: expected '{expected}', found '{actual}'"),
+            )
+        }
     }
 }
 
@@ -533,10 +540,10 @@ impl Resolver {
                 }
                 Type::Never
             }
-            ExprKind::Return { expr: inner } => {
-                let ret_ty = self.function_ret_ty(inner.node, func_id)?;
-                let inner_ty = self.expr(inner, func_id, Some(&ret_ty))?;
-                unify_ty(inner.node.span, &ret_ty, &inner_ty)?;
+            ExprKind::Return { expr: value_expr } => {
+                let ret_ty = self.function_ret_ty(value_expr.node, func_id)?;
+                let inner_ty = self.expr(value_expr, func_id, Some(&ret_ty))?;
+                unify_ty(value_expr.node.span, &ret_ty, &inner_ty)?;
                 Type::Never
             }
         };

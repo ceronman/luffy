@@ -306,11 +306,10 @@ fn valid_explicit_unit_return_type() {
 }
 
 #[test]
-// TODO: Add special case error message for function that returns Unit
 fn error_return_int_from_unit_function() {
-    assert_snapshot!(check("fn main() { return 0 }"), @r"
+    assert_snapshot!(check("fn main() { return 0 }"), @"
     fn main() { return 0 }
-                       ^ ─── Type mismatch: expected 'Unit', found 'Int'
+                       ^ ─── Type mismatch: expected no value, found 'Int'
     ");
 }
 
