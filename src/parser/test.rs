@@ -473,6 +473,28 @@ fn call_with_expression_arg() {
     ");
 }
 
+#[test]
+fn call_args_trailing_comma() {
+    // A single trailing comma after the last argument is allowed.
+    assert_snapshot!(parse_expr("foo(1, 2, 3,)"), @r"
+    Call
+    ├── Var [foo]
+    └── Args
+        ├── Int[1]
+        ├── Int[2]
+        └── Int[3]
+    ");
+}
+
+#[test]
+fn error_call_args_double_trailing_comma() {
+    // Only a single trailing comma is allowed; a second comma is still an error.
+    assert_snapshot!(parse_module("fn f() { foo(1, 2,,) }"), @"
+    fn f() { foo(1, 2,,) }
+                      ^ ─── Unexpected `,`
+    ");
+}
+
 // ── Statement tests ───────────────────────────────────────────────────────────
 
 #[test]
@@ -757,6 +779,45 @@ fn function_multiple_params() {
                     └── Binary [+]
                         ├── Var [a]
                         └── Var [b]
+    ");
+}
+
+#[test]
+fn function_params_trailing_comma() {
+    // A single trailing comma after the last parameter is allowed.
+    let src = "fn add(a Int, b Int,) Int { return a + b }";
+    assert_snapshot!(parse_module(src), @"
+    Module
+    └── Function [add]
+        ├── Export [false]
+        ├── Parameters
+        │   ├── Param
+        │   │   ├── Name
+        │   │   │   └── a
+        │   │   └── Type
+        │   │       └── Type [Int]
+        │   └── Param
+        │       ├── Name
+        │       │   └── b
+        │       └── Type
+        │           └── Type [Int]
+        ├── Return
+        │   └── Type [Int]
+        └── Body
+            └── Block
+                └── Return
+                    └── Binary [+]
+                        ├── Var [a]
+                        └── Var [b]
+    ");
+}
+
+#[test]
+fn error_function_params_double_trailing_comma() {
+    // Only a single trailing comma is allowed; a second comma is still an error.
+    assert_snapshot!(parse_module("fn add(a Int, b Int,,) Int { return a + b }"), @"
+    fn add(a Int, b Int,,) Int { return a + b }
+                        ^ ─── Expected param name, found `,` instead
     ");
 }
 
@@ -2348,12 +2409,33 @@ fn error_type_arg_invalid_token() {
 }
 
 #[test]
-fn error_type_arg_trailing_comma() {
-    // TODO: Decide if trailing commas should be allowed in general
-    // A comma must be followed by another argument; a trailing comma is rejected.
+fn type_arg_trailing_comma() {
+    // A single trailing comma after the last type argument is allowed.
     assert_snapshot!(parse_module("fn f(x Array[Int,]) {}"), @"
-    fn f(x Array[Int,]) {}
-                     ^ ─── Expected type, found `]` instead
+    Module
+    └── Function [f]
+        ├── Export [false]
+        ├── Parameters
+        │   └── Param
+        │       ├── Name
+        │       │   └── x
+        │       └── Type
+        │           └── Type [Array]
+        │               └── Args
+        │                   └── Type [Int]
+        ├── Return
+        │   └── Unit
+        └── Body
+            └── Block
+    ");
+}
+
+#[test]
+fn error_type_arg_double_trailing_comma() {
+    // Only a single trailing comma is allowed; a second comma is still an error.
+    assert_snapshot!(parse_module("fn f(x Array[Int,,]) {}"), @"
+    fn f(x Array[Int,,]) {}
+                     ^ ─── Expected type, found `,` instead
     ");
 }
 
@@ -2525,11 +2607,21 @@ fn collection_can_be_indexed() {
 }
 
 #[test]
-fn error_collection_trailing_comma() {
-    // A comma must be followed by another element; a trailing comma is rejected.
-    assert_snapshot!(parse_module("fn foo() { [1, 2,] }"), @"
-    fn foo() { [1, 2,] }
-                     ^ ─── Unexpected `]`
+fn collection_trailing_comma() {
+    // A single trailing comma after the last element is allowed.
+    assert_snapshot!(parse_expr("[1, 2,]"), @r"
+    Collection
+    ├── Int[1]
+    └── Int[2]
+    ");
+}
+
+#[test]
+fn error_collection_double_trailing_comma() {
+    // Only a single trailing comma is allowed; a second comma is still an error.
+    assert_snapshot!(parse_module("fn foo() { [1, 2,,] }"), @"
+    fn foo() { [1, 2,,] }
+                     ^ ─── Unexpected `,`
     ");
 }
 
@@ -2866,13 +2958,23 @@ fn error_mapping_field_missing_equals() {
 }
 
 #[test]
-fn error_mapping_trailing_comma() {
-    // Unlike struct field *declarations* (which allow a trailing `;`), a mapping
-    // literal does NOT allow a trailing comma: after the comma the parser expects
-    // another field key.
-    assert_snapshot!(parse_module("fn f() { let x P = { a = 1, } }"), @"
-    fn f() { let x P = { a = 1, } }
-                                ^ ─── Expected field name, found `}` instead
+fn mapping_trailing_comma() {
+    // A single trailing comma after the last field is allowed, just like in
+    // struct field declarations.
+    assert_snapshot!(parse_expr("{ a = 1, }"), @"
+    Mapping
+    └── MappingField
+        ├── a
+        └── Int[1]
+    ");
+}
+
+#[test]
+fn error_mapping_double_trailing_comma() {
+    // Only a single trailing comma is allowed; a second comma is still an error.
+    assert_snapshot!(parse_module("fn f() { let x P = { a = 1,, } }"), @"
+    fn f() { let x P = { a = 1,, } }
+                               ^ ─── Expected field name, found `,` instead
     ");
 }
 

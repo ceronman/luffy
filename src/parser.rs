@@ -149,17 +149,28 @@ impl<'src> Parser<'src> {
     }
 
     fn params(&mut self) -> Result<Vec<Param>> {
-        let mut params = Vec::new();
-        if self.current.kind != TokenKind::RParen {
+        self.comma_separated(TokenKind::RParen, Self::param)
+    }
+
+    fn comma_separated<T>(
+        &mut self,
+        close: TokenKind,
+        parse_item: fn(&mut Self) -> Result<T>,
+    ) -> Result<Vec<T>> {
+        let mut items = Vec::new();
+        if self.current.kind != close {
             loop {
-                params.push(self.param()?);
+                items.push(parse_item(self)?);
 
                 if !self.eat(TokenKind::Comma) {
                     break;
                 }
+                if self.current.kind == close {
+                    break;
+                }
             }
         }
-        Ok(params)
+        Ok(items)
     }
 
     fn identifier(&mut self, msg: impl Fn(Token) -> String) -> Result<Identifier> {
@@ -176,14 +187,7 @@ impl<'src> Parser<'src> {
         let mut end = name.node.span;
         let mut args = Vec::new();
         if self.eat(TokenKind::LBracket) {
-            if self.current.kind != TokenKind::RBracket {
-                loop {
-                    args.push(self.type_ref()?);
-                    if !self.eat(TokenKind::Comma) {
-                        break;
-                    }
-                }
-            }
+            args = self.comma_separated(TokenKind::RBracket, Self::type_ref)?;
             let rbracket = self.expect(TokenKind::RBracket)?;
             end = rbracket.span;
         }
@@ -280,16 +284,7 @@ impl<'src> Parser<'src> {
 
     fn collection(&mut self) -> Result<Expr> {
         let lbracket = self.expect(TokenKind::LBracket)?;
-        let mut elements = Vec::new();
-        if self.current.kind != TokenKind::RBracket {
-            loop {
-                elements.push(self.expression()?);
-
-                if !self.eat(TokenKind::Comma) {
-                    break;
-                }
-            }
-        }
+        let elements = self.comma_separated(TokenKind::RBracket, Self::expression)?;
         let rbracket = self.expect(TokenKind::RBracket)?;
         Ok(Expr {
             node: self.node(lbracket.span, rbracket.span),
@@ -299,16 +294,7 @@ impl<'src> Parser<'src> {
 
     fn mapping(&mut self) -> Result<Expr> {
         let lbrace = self.expect(TokenKind::LBrace)?;
-        let mut elements = Vec::new();
-        if self.current.kind != TokenKind::RBrace {
-            loop {
-                elements.push(self.mapping_field()?);
-
-                if !self.eat(TokenKind::Comma) {
-                    break;
-                }
-            }
-        }
+        let elements = self.comma_separated(TokenKind::RBrace, Self::mapping_field)?;
         let rbrace = self.expect(TokenKind::RBrace)?;
         Ok(Expr {
             node: self.node(lbrace.span, rbrace.span),
@@ -370,16 +356,7 @@ impl<'src> Parser<'src> {
 
     fn call(&mut self, prefix: Expr) -> Result<Expr> {
         self.expect(TokenKind::LParen)?;
-        let mut args = Vec::new();
-        if self.current.kind != TokenKind::RParen {
-            loop {
-                args.push(self.expression()?);
-
-                if !self.eat(TokenKind::Comma) {
-                    break;
-                }
-            }
-        }
+        let args = self.comma_separated(TokenKind::RParen, Self::expression)?;
         let rparen = self.expect(TokenKind::RParen)?;
         Ok(Expr {
             node: self.node(prefix.node.span, rparen.span),
