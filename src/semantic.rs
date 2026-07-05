@@ -448,6 +448,22 @@ impl Resolver {
                         "Invalid function call: callee is not a function",
                     );
                 };
+
+                // TODO: Improve error messages
+                if args.len() > params.len() {
+                    return type_err(
+                        callee.node.span,
+                        "Invalid function call: too many arguments",
+                    );
+                }
+
+                if args.len() < params.len() {
+                    return type_err(
+                        callee.node.span,
+                        "Invalid function call: not enough arguments",
+                    );
+                }
+
                 for (param_ty, arg) in params.iter().zip(args.iter()) {
                     let arg_ty = self.expr(arg, func_id, Some(param_ty))?;
                     let unified_ty = unify_ty(arg.node.span, param_ty, &arg_ty)?;
@@ -731,22 +747,25 @@ pub fn semantic_analysis(module: &Module) -> Result<Semantics> {
 
     resolver.module(module)?;
 
-    #[cfg(debug_assertions)]
-    assert_fully_typed(module, &resolver.semantics);
-    debug_assert!(resolver.incomplete_types.is_empty());
+    assert_fully_typed(module, &resolver.semantics)?;
+    if !resolver.incomplete_types.is_empty() {
+        return internal_err(
+            Span::new(0, 0),
+            "semantic analysis did not resolve all types",
+        );
+    }
 
     Ok(resolver.semantics)
 }
 
-#[cfg(debug_assertions)]
-fn assert_fully_typed(module: &Module, semantics: &Semantics) {
-    fn check_expr(expr: &Expr, semantics: &Semantics) {
-        semantics.expr_types.get(&expr.node.id).unwrap_or_else(|| {
-            panic!(
-                "expression {} (span {:?}) has no type assigned after semantic analysis",
-                expr.node.id, expr.node.span
-            )
-        });
+fn assert_fully_typed(module: &Module, semantics: &Semantics) -> Result<()> {
+    fn check_expr(expr: &Expr, semantics: &Semantics) -> Result<()> {
+        if !semantics.expr_types.contains_key(&expr.node.id) {
+            return internal_err(
+                expr.node.span,
+                "expression has no type assigned after semantic analysis",
+            );
+        }
         match &expr.kind {
             ExprKind::Literal { .. }
             | ExprKind::Variable { .. }
@@ -754,80 +773,84 @@ fn assert_fully_typed(module: &Module, semantics: &Semantics) {
             | ExprKind::Continue => {}
             ExprKind::Collection { elements } => {
                 for element in elements {
-                    check_expr(element, semantics);
+                    check_expr(element, semantics)?;
                 }
             }
             ExprKind::Mapping { fields } => {
                 for field in fields {
-                    check_expr(&field.value, semantics);
+                    check_expr(&field.value, semantics)?;
                 }
             }
-            ExprKind::Unary { expr, .. } => check_expr(expr, semantics),
+            ExprKind::Unary { expr, .. } => check_expr(expr, semantics)?,
             ExprKind::Binary { left, right, .. } => {
-                check_expr(left, semantics);
-                check_expr(right, semantics);
+                check_expr(left, semantics)?;
+                check_expr(right, semantics)?;
             }
             ExprKind::Call { callee, args } => {
-                check_expr(callee, semantics);
+                check_expr(callee, semantics)?;
                 for arg in args {
-                    check_expr(arg, semantics);
+                    check_expr(arg, semantics)?;
                 }
             }
             ExprKind::Assignment { target, value } => {
-                check_expr(target, semantics);
-                check_expr(value, semantics);
+                check_expr(target, semantics)?;
+                check_expr(value, semantics)?;
             }
             ExprKind::Index { expr, index } => {
-                check_expr(expr, semantics);
-                check_expr(index, semantics);
+                check_expr(expr, semantics)?;
+                check_expr(index, semantics)?;
             }
             ExprKind::Field { expr, .. } => {
-                check_expr(expr, semantics);
+                check_expr(expr, semantics)?;
             }
             ExprKind::If {
                 condition,
                 then_branch,
                 else_branch,
             } => {
-                check_expr(condition, semantics);
-                check_block(then_branch, semantics);
+                check_expr(condition, semantics)?;
+                check_block(then_branch, semantics)?;
                 if let Some(else_branch) = else_branch {
-                    check_block(else_branch, semantics);
+                    check_block(else_branch, semantics)?;
                 }
             }
-            ExprKind::Return { expr } => check_expr(expr, semantics),
+            ExprKind::Return { expr } => check_expr(expr, semantics)?,
         }
+        Ok(())
     }
 
-    fn check_block(block: &Block, semantics: &Semantics) {
+    fn check_block(block: &Block, semantics: &Semantics) -> Result<()> {
         match &block.kind {
             BlockKind::Braces { statements } => {
                 for stmt in statements {
-                    check_stmt(stmt, semantics);
+                    check_stmt(stmt, semantics)?;
                 }
             }
-            BlockKind::Expr { expr } => check_expr(expr, semantics),
+            BlockKind::Expr { expr } => check_expr(expr, semantics)?,
         }
+        Ok(())
     }
 
-    fn check_stmt(stmt: &Stmt, semantics: &Semantics) {
+    fn check_stmt(stmt: &Stmt, semantics: &Semantics) -> Result<()> {
         match &stmt.kind {
-            StmtKind::ExprStmt { expr } => check_expr(expr, semantics),
+            StmtKind::ExprStmt { expr } => check_expr(expr, semantics)?,
             StmtKind::Declaration { initializer, .. } => {
                 if let Some(initializer) = initializer {
-                    check_expr(initializer, semantics);
+                    check_expr(initializer, semantics)?;
                 }
             }
             StmtKind::While { condition, body } => {
-                check_expr(condition, semantics);
-                check_block(body, semantics);
+                check_expr(condition, semantics)?;
+                check_block(body, semantics)?;
             }
         }
+        Ok(())
     }
 
     for item in &module.items {
         if let ItemKind::Function { body, .. } = &item.kind {
-            check_block(body, semantics);
+            check_block(body, semantics)?;
         }
     }
+    Ok(())
 }

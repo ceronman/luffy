@@ -17,7 +17,7 @@ pub enum ErrorKind {
     Internal,
 }
 
-pub fn parse_err<T: Debug>(span: Span, message: impl Into<String>) -> crate::parser::Result<T> {
+pub fn parse_err<T>(span: Span, message: impl Into<String>) -> crate::parser::Result<T> {
     Err(CompilerError {
         kind: ErrorKind::Parse,
         msg: message.into(),
@@ -25,7 +25,7 @@ pub fn parse_err<T: Debug>(span: Span, message: impl Into<String>) -> crate::par
     })
 }
 
-pub fn resolve_err<T: Debug>(span: Span, message: impl Into<String>) -> crate::parser::Result<T> {
+pub fn resolve_err<T>(span: Span, message: impl Into<String>) -> crate::parser::Result<T> {
     Err(CompilerError {
         kind: ErrorKind::Resolve,
         msg: message.into(),
@@ -33,7 +33,7 @@ pub fn resolve_err<T: Debug>(span: Span, message: impl Into<String>) -> crate::p
     })
 }
 
-pub fn type_err<T: Debug>(span: Span, message: impl Into<String>) -> crate::parser::Result<T> {
+pub fn type_err<T>(span: Span, message: impl Into<String>) -> crate::parser::Result<T> {
     Err(CompilerError {
         kind: ErrorKind::Type,
         msg: message.into(),
@@ -41,7 +41,7 @@ pub fn type_err<T: Debug>(span: Span, message: impl Into<String>) -> crate::pars
     })
 }
 
-pub fn internal_err<T: Debug>(span: Span, message: impl Into<String>) -> crate::parser::Result<T> {
+pub fn internal_err<T>(span: Span, message: impl Into<String>) -> crate::parser::Result<T> {
     Err(CompilerError {
         kind: ErrorKind::Internal,
         msg: message.into(),

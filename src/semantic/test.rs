@@ -411,15 +411,39 @@ fn error_modulo_on_float() {
 
 // ── Type errors: function calls ───────────────────────────────────────────────
 
-// TODO: write a test for function calls with different arity.
+#[test]
+fn error_call_with_too_many_args() {
+    let src = r#"
+    fn foo(a Int, b Int) Int: 1
+    fn main() {
+        foo(1, 2, 3)
+    }"#;
+    assert_snapshot!(check(src), @"
+    foo(1, 2, 3)
+    ^^^ ─── Invalid function call: too many arguments
+    ");
+}
+
+#[test]
+fn error_call_with_not_enough_args() {
+    let src = r#"
+    fn foo(a Int, b Int) Int: 1
+    fn main() {
+        foo(1)
+    }"#;
+    assert_snapshot!(check(src), @"
+    foo(1)
+    ^^^ ─── Invalid function call: not enough arguments
+    ");
+}
 
 #[test]
 // TODO: improve error message mentioning the actual type
 fn error_call_on_non_function() {
     let src = r#"fn main() {
-    let x Int = 1
-    x()
-}"#;
+        let x Int = 1
+        x()
+    }"#;
     assert_snapshot!(check(src), @r"
     x()
     ^ ─── Invalid function call: callee is not a function

@@ -11,15 +11,9 @@ pub mod source;
 
 fn main() {
     let code = r#"
-        import fn print_int(x Int)
-
-        struct Foo {
-            a Int
-            next Foo
-        }
-
-        export fn main() {
-            let x Foo
+        fn foo(a Int, b Int) Int: 1
+        fn main() {
+            foo(1, 2, 3)
         }
     "#;
 
