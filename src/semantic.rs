@@ -290,6 +290,12 @@ impl Resolver {
                 LiteralKind::Int(_) => Type::Int,
                 LiteralKind::Float(_) => Type::Float,
                 LiteralKind::Bool(_) => Type::Bool,
+                LiteralKind::Str(_) => {
+                    return type_err(
+                        expr.node.span,
+                        "string literals are not supported yet".to_string(),
+                    );
+                }
             },
             ExprKind::Variable { name } => {
                 let decl_id = self.lookup(name)?;

@@ -1,4 +1,5 @@
 mod numbers;
+mod strings;
 #[cfg(test)]
 mod test;
 
@@ -235,9 +236,11 @@ impl<'src> Parser<'src> {
             TokenKind::LParen => self.grouping()?,
             TokenKind::LBracket => self.collection()?,
             TokenKind::LBrace => self.mapping()?,
-            TokenKind::Int | TokenKind::Float | TokenKind::False | TokenKind::True => {
-                self.literal()?
-            }
+            TokenKind::Int
+            | TokenKind::Float
+            | TokenKind::False
+            | TokenKind::True
+            | TokenKind::String => self.literal()?,
             TokenKind::Identifier => self.variable()?,
             TokenKind::Not | TokenKind::Minus => self.unary_expr()?,
             TokenKind::If => self.if_expr()?,
@@ -492,6 +495,12 @@ impl<'src> Parser<'src> {
                     kind: LiteralKind::Float(value),
                 }
             }
+            TokenKind::String => {
+                let value = self.string_lit()?;
+                ExprKind::Literal {
+                    kind: LiteralKind::Str(value),
+                }
+            }
             _ => {
                 return parse_err(token.span, format!("Expected literal, got {}", token.kind));
             }
@@ -516,6 +525,16 @@ impl<'src> Parser<'src> {
         let token = self.expect(TokenKind::Float)?;
         let text = self.slice(token.span);
         let value = match numbers::parse_float_literal(text) {
+            Ok(v) => v,
+            Err(msg) => return parse_err(token.span, msg),
+        };
+        Ok(value)
+    }
+
+    fn string_lit(&mut self) -> Result<String> {
+        let token = self.expect(TokenKind::String)?;
+        let text = self.slice(token.span);
+        let value = match strings::parse_string_literal(text) {
             Ok(v) => v,
             Err(msg) => return parse_err(token.span, msg),
         };

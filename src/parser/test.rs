@@ -231,6 +231,83 @@ fn bool_literal_false() {
     assert_snapshot!(parse_expr("false"), @"Bool[false]");
 }
 
+// ── String literal tests ──────────────────────────────────────────────────────
+
+#[test]
+fn string_literal_plain() {
+    assert_snapshot!(parse_expr(r#""hello""#), @r#"Str["hello"]"#);
+}
+
+#[test]
+fn string_literal_empty() {
+    assert_snapshot!(parse_expr(r#""""#), @r#"Str[""]"#);
+}
+
+#[test]
+fn string_literal_simple_escapes() {
+    assert_snapshot!(parse_expr(r#""a\nb\tc\\d\"e""#), @r#"Str["a\nb\tc\\d\"e"]"#);
+}
+
+#[test]
+fn string_literal_escaped_quote_is_not_the_terminator() {
+    assert_snapshot!(parse_expr(r#""a\"b""#), @r#"Str["a\"b"]"#);
+}
+
+#[test]
+fn string_literal_unicode_escape() {
+    assert_snapshot!(parse_expr(r#""\u{1F600}""#), @r#"Str["😀"]"#);
+}
+
+#[test]
+fn string_literal_unknown_escape_is_an_error() {
+    assert_snapshot!(parse_expr(r#""\q""#), @r#"
+    "\q"
+    ^^^^ ─── unknown escape sequence `\q`
+    "#);
+}
+
+#[test]
+fn string_literal_no_hex_byte_escape() {
+    // Luffy is Swift-style: there is no `\xHH` escape.
+    assert_snapshot!(parse_expr(r#""\x41""#), @r#"
+    "\x41"
+    ^^^^^^ ─── unknown escape sequence `\x`
+    "#);
+}
+
+#[test]
+fn string_literal_no_octal_escape() {
+    // Luffy is Swift-style: there is no octal escape.
+    assert_snapshot!(parse_expr(r#""\101""#), @r#"
+    "\101"
+    ^^^^^^ ─── unknown escape sequence `\1`
+    "#);
+}
+
+#[test]
+fn string_literal_unicode_escape_missing_braces_is_an_error() {
+    assert_snapshot!(parse_expr(r#""\u41""#), @r#"
+    "\u41"
+    ^^^^^^ ─── expected `{` after `\u`
+    "#);
+}
+
+#[test]
+fn string_literal_unicode_escape_out_of_range_is_an_error() {
+    assert_snapshot!(parse_expr(r#""\u{110000}""#), @r#"
+    "\u{110000}"
+    ^^^^^^^^^^^^ ─── `\u{110000}` is not a valid Unicode scalar value
+    "#);
+}
+
+#[test]
+fn unterminated_string_literal_is_an_error() {
+    assert_snapshot!(parse_expr(r#""unterminated"#), @r#"
+    "unterminated
+    ^^^^^^^^^^^^^^^ ─── Unexpected <Error>
+    "#);
+}
+
 // ── Variable tests ────────────────────────────────────────────────────────────
 
 #[test]

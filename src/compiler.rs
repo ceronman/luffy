@@ -224,6 +224,10 @@ impl Compiler {
                 ast::LiteralKind::Int(value) => ins.push(ir::Instruction::I64Const(*value)),
                 ast::LiteralKind::Float(value) => ins.push(ir::Instruction::F64Const(*value)),
                 ast::LiteralKind::Bool(value) => ins.push(ir::Instruction::I32Const(*value as i32)),
+                // Semantic analysis rejects `Str` literals before compilation
+                // is reached (there is no `Str` type yet), so this is
+                // unreachable for now. Wasm codegen for strings is future work.
+                ast::LiteralKind::Str(_) => unimplemented!("string literals are not compiled yet"),
             },
             ast::ExprKind::Variable { name } => {
                 let address = self.local_addr(name);

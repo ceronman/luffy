@@ -201,6 +201,7 @@ impl PrettyAst {
             LiteralKind::Int(v) => Self::new(format!("Int[{}]", *v), vec![]),
             LiteralKind::Float(v) => Self::new(format!("Float[{}]", *v), vec![]),
             LiteralKind::Bool(v) => Self::new(format!("Bool[{}]", *v), vec![]),
+            LiteralKind::Str(v) => Self::new(format!("Str[{v:?}]"), vec![]),
         }
     }
 

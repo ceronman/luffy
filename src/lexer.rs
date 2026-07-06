@@ -39,7 +39,7 @@ pub enum TokenKind {
     Int,
     Float,
     Identifier,
-    Str,
+    String,
 
     Break,
     Continue,
@@ -321,13 +321,16 @@ impl<'src> Lexer<'src> {
     }
 
     fn string(&mut self) -> TokenKind {
-        //TODO: Handle unterminated string!
         while let Some(c) = self.eat() {
-            if c == '"' {
-                break;
+            match c {
+                '"' => return TokenKind::String,
+                '\\' => {
+                    self.eat();
+                }
+                _ => {}
             }
         }
-        TokenKind::Str
+        TokenKind::Error
     }
 
     fn identifier(&mut self) -> TokenKind {
@@ -408,7 +411,7 @@ impl Display for TokenKind {
             TokenKind::Int => "`<Int>",
             TokenKind::Float => "<Float>",
             TokenKind::Identifier => "<Identifier>",
-            TokenKind::Str => "<String>",
+            TokenKind::String => "<String>",
             TokenKind::Let => "`let`",
             TokenKind::If => "`if`",
             TokenKind::Else => "`else`",

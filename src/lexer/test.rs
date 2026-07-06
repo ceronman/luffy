@@ -159,6 +159,38 @@ fn malformed_numbers_are_single_tokens() {
 }
 
 #[test]
+fn strings() {
+    // The lexer only recognizes the token's extent; escape sequences are
+    // validated and decoded later, by the parser.
+    // Snapshot left empty: run `cargo insta test && cargo insta review`.
+    assert_snapshot!(tokens(r#""hello" "" "with spaces""#), @"[ <String>  <String>  <String> ]");
+}
+
+#[test]
+fn string_with_escaped_quote_does_not_end_the_token() {
+    // `\"` must not be treated as the closing quote: this is a single Str
+    // token, not `<String>` followed by garbage.
+    // Snapshot left empty: run `cargo insta test && cargo insta review`.
+    assert_snapshot!(tokens(r#""a\"b" 1"#), @"[ <String>  `<Int> ]");
+}
+
+#[test]
+fn string_with_escaped_backslash_before_closing_quote() {
+    // `\\` immediately before the closing `"` must not cause the quote to be
+    // swallowed as an escape (the backslash escapes itself, not the quote).
+    // Snapshot left empty: run `cargo insta test && cargo insta review`.
+    assert_snapshot!(tokens(r#""a\\" 1"#), @"[ <String>  `<Int> ]");
+}
+
+#[test]
+fn unterminated_string_is_an_error_token() {
+    // Reaching EOF before a closing `"` is an error, not a silently
+    // truncated string.
+    // Snapshot left empty: run `cargo insta test && cargo insta review`.
+    assert_snapshot!(tokens(r#""unterminated"#), @"[ <Error> ]");
+}
+
+#[test]
 fn trivial() {
     assert_snapshot!(
         tokens_with_trivial(r#"

@@ -170,6 +170,7 @@ pub enum LiteralKind {
     Int(i64),
     Float(f64),
     Bool(bool),
+    Str(String),
 }
 
 #[derive(Debug)]
