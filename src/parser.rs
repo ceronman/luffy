@@ -742,10 +742,7 @@ impl<'src> Parser<'src> {
     fn node(&mut self, start: Span, end: Span) -> Node {
         let result = Node {
             id: self.id_counter,
-            span: Span {
-                start: start.start,
-                end: end.end,
-            },
+            span: Span::new(start.start, end.end),
         };
         self.id_counter += 1;
         result

@@ -68,12 +68,6 @@ pub enum TokenKind {
     Error,
 }
 
-impl Span {
-    pub fn new(start: usize, end: usize) -> Span {
-        Span { start, end }
-    }
-}
-
 #[derive(Copy, Clone, Debug)]
 pub struct Token {
     pub kind: TokenKind,
@@ -109,10 +103,7 @@ impl<'src> Lexer<'src> {
 
         Token {
             kind: self.token_kind(c),
-            span: Span {
-                start: self.start,
-                end: self.offset,
-            },
+            span: Span::new(self.start, self.offset),
             newline_before: false,
         }
     }

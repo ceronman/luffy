@@ -755,10 +755,7 @@ pub fn semantic_analysis(module: &Module) -> Result<Semantics> {
 
     assert_fully_typed(module, &resolver.semantics)?;
     if !resolver.incomplete_types.is_empty() {
-        return internal_err(
-            Span::new(0, 0),
-            "semantic analysis did not resolve all types",
-        );
+        return internal_err(Span::empty(), "semantic analysis did not resolve all types");
     }
 
     Ok(resolver.semantics)
