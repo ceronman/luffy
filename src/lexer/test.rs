@@ -30,6 +30,22 @@ fn keywords() {
 }
 
 #[test]
+fn break_and_continue_keywords() {
+    assert_snapshot!(
+        tokens("break continue"),
+        @"[ `break`  `continue` ]"
+    );
+}
+
+#[test]
+fn eof_token_at_end_of_input() {
+    let mut lexer = Lexer::new("break");
+    assert_eq!(lexer.next_significant().kind, TokenKind::Break);
+    assert_eq!(lexer.next_significant().kind, TokenKind::Eof);
+    assert_eq!(lexer.next_significant().kind, TokenKind::Eof);
+}
+
+#[test]
 fn import_export_keywords() {
     assert_snapshot!(
         tokens("import export"),
@@ -188,6 +204,11 @@ fn unterminated_string_is_an_error_token() {
     // truncated string.
     // Snapshot left empty: run `cargo insta test && cargo insta review`.
     assert_snapshot!(tokens(r#""unterminated"#), @"[ <Error> ]");
+}
+
+#[test]
+fn unterminated_block_comment_is_an_error_token() {
+    assert_snapshot!(tokens("/* unterminated"), @"[ <Error> ]");
 }
 
 #[test]
