@@ -1059,6 +1059,51 @@ fn struct_has_reference_semantics() {
 }
 
 #[test]
+fn self_recursive_struct_builds_linked_list() {
+    // A self-recursive struct works at runtime: an uninitialized local is a
+    // null reference, so it can seed the tail of a list, and links can be
+    // rewired to form arbitrary (even cyclic) shapes.
+    let src = r#"
+        import fn print_int(x Int)
+        struct Node { data Int; next Node }
+        export fn main() {
+            let tail Node
+            let head Node = { data = 1, next = tail }
+            head.next = { data = 2, next = head }
+            print_int(head.data)
+            print_int(head.next.data)
+            print_int(head.next.next.data)
+        }
+    "#;
+    assert_snapshot!(compile_and_run(src), @"
+    1
+    2
+    1
+    ");
+}
+
+#[test]
+fn mutually_recursive_structs_construct_and_read() {
+    let src = r#"
+        import fn print_int(x Int)
+        struct A { value Int; b B }
+        struct B { value Int; a A }
+        export fn main() {
+            let empty B
+            let a A = { value = 1, b = { value = 2, a = { value = 3, b = empty } } }
+            print_int(a.value)
+            print_int(a.b.value)
+            print_int(a.b.a.value)
+        }
+    "#;
+    assert_snapshot!(compile_and_run(src), @"
+    1
+    2
+    3
+    ");
+}
+
+#[test]
 fn empty_struct_constructs() {
     let src = r#"
         import fn print_int(x Int)

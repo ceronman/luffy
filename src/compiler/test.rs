@@ -1276,6 +1276,86 @@ fn struct_mixed_int_and_bool_fields() {
     ");
 }
 
+// ── Recursive struct types ────────────────────────────────────────────────────
+
+#[test]
+fn self_recursive_struct_references_own_type() {
+    // A struct that references itself is still a single-type group (the
+    // shorthand for a recursion group of one), with the field pointing at the
+    // struct's own type index.
+    let src = r#"
+        struct Node { data Int; next Node }
+        export fn main() {
+            let node Node
+        }
+    "#;
+    assert_snapshot!(compile_to_wat(src), @r#"
+    (module
+      (type (;0;) (func))
+      (type (;1;) (struct (field (mut i64)) (field (mut (ref null 1)))))
+      (export "main" (func 0))
+      (func (;0;) (type 0)
+        (local (ref null 1))
+      )
+    )
+    "#);
+}
+
+#[test]
+fn mutually_recursive_structs_share_a_rec_group() {
+    // `A` and `B` reference each other, so they must be defined together in
+    // one explicit `rec` group.
+    let src = r#"
+        struct A { value Int; b B }
+        struct B { value Int; a A }
+        export fn main() {
+            let a A
+        }
+    "#;
+    assert_snapshot!(compile_to_wat(src), @r#"
+    (module
+      (type (;0;) (func))
+      (rec
+        (type (;1;) (struct (field (mut i64)) (field (mut (ref null 2)))))
+        (type (;2;) (struct (field (mut i64)) (field (mut (ref null 1)))))
+      )
+      (export "main" (func 0))
+      (func (;0;) (type 0)
+        (local (ref null 1))
+      )
+    )
+    "#);
+}
+
+#[test]
+fn only_mutually_recursive_types_are_grouped() {
+    // `Leaf` is referenced by the recursive pair but does not participate in
+    // the cycle, so it stays in its own (earlier) group; only `A` and `B`
+    // share a `rec` group.
+    let src = r#"
+        struct Leaf { v Int }
+        struct A { leaf Leaf; b B }
+        struct B { a A }
+        export fn main() {
+            let a A
+        }
+    "#;
+    assert_snapshot!(compile_to_wat(src), @r#"
+    (module
+      (type (;0;) (func))
+      (type (;1;) (struct (field (mut i64))))
+      (rec
+        (type (;2;) (struct (field (mut (ref null 1))) (field (mut (ref null 3)))))
+        (type (;3;) (struct (field (mut (ref null 2)))))
+      )
+      (export "main" (func 0))
+      (func (;0;) (type 0)
+        (local (ref null 2))
+      )
+    )
+    "#);
+}
+
 #[test]
 fn nested_struct_creates_inner_type_first() {
     // `Outer` has an `Inner`-typed field, so the inner struct type is created

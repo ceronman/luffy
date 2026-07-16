@@ -11,9 +11,13 @@ pub mod source;
 
 fn main() {
     let code = r#"
-        fn foo(a Int, b Int) Int: 1
-        fn main() {
-            foo(1, 2, 3)
+        struct Node {
+            data Int
+            next Node
+        }
+
+        export fn main() {
+            let node Node
         }
     "#;
 

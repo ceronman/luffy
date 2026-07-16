@@ -3,28 +3,20 @@ mod test;
 
 use crate::ir;
 use wasm_encoder::{
-    BlockType, CodeSection, EntityType, ExportKind, ExportSection, FieldType, Function,
-    FunctionSection, HeapType, ImportSection, Instruction, Module, RefType, StorageType,
-    TypeSection, ValType,
+    ArrayType, BlockType, CodeSection, CompositeInnerType, CompositeType, EntityType, ExportKind,
+    ExportSection, FieldType, FuncType, Function, FunctionSection, HeapType, ImportSection,
+    Instruction, Module, RefType, StorageType, StructType, SubType, TypeSection, ValType,
 };
 
 pub fn emit(module: ir::Module) -> Vec<u8> {
     let mut bin_module = Module::new();
 
     let mut types = TypeSection::new();
-    for ty in &module.types {
-        match ty {
-            ir::Type::Function { params, results } => {
-                types.ty().function(
-                    params.iter().map(ir::ValType::encode),
-                    results.iter().map(ir::ValType::encode),
-                );
-            }
-            ir::Type::Array { ty } => types.ty().array(&ty.encode(), true),
-            ir::Type::Struct { fields } => types.ty().struct_(fields.iter().map(|f| FieldType {
-                element_type: f.encode(),
-                mutable: true,
-            })),
+    for group in &module.types {
+        if let [ty] = group.types.as_slice() {
+            types.ty().subtype(&ty.encode());
+        } else {
+            types.ty().rec(group.types.iter().map(ir::Type::encode));
         }
     }
     bin_module.section(&types);
@@ -64,6 +56,40 @@ pub fn emit(module: ir::Module) -> Vec<u8> {
     bin_module.section(&codes);
 
     bin_module.finish()
+}
+
+impl ir::Type {
+    fn encode(&self) -> SubType {
+        let inner = match self {
+            ir::Type::Function { params, results } => CompositeInnerType::Func(FuncType::new(
+                params.iter().map(ir::ValType::encode),
+                results.iter().map(ir::ValType::encode),
+            )),
+            ir::Type::Array { ty } => CompositeInnerType::Array(ArrayType(FieldType {
+                element_type: ty.encode(),
+                mutable: true,
+            })),
+            ir::Type::Struct { fields } => CompositeInnerType::Struct(StructType {
+                fields: fields
+                    .iter()
+                    .map(|f| FieldType {
+                        element_type: f.encode(),
+                        mutable: true,
+                    })
+                    .collect(),
+            }),
+        };
+        SubType {
+            is_final: true,
+            supertype_idx: None,
+            composite_type: CompositeType {
+                inner,
+                shared: false,
+                descriptor: None,
+                describes: None,
+            },
+        }
+    }
 }
 
 impl ir::ValType {

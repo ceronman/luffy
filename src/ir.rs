@@ -6,10 +6,15 @@ pub type LabelIdx = Idx;
 pub type FieldIdx = Idx;
 
 pub struct Module {
-    pub types: Vec<Type>,
+    pub types: Vec<RecGroup>,
     pub imports: Vec<Import>,
     pub functions: Vec<Function>,
     pub exports: Vec<Export>,
+}
+
+#[derive(Clone)]
+pub struct RecGroup {
+    pub types: Vec<Type>,
 }
 
 #[derive(Clone)]

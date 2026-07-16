@@ -4,7 +4,7 @@ mod test;
 use crate::semantic::{Declaration, DeclarationId, DeclarationKind, Semantics, StructField, Type};
 use crate::source::Symbol;
 use crate::{ast, ir};
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::rc::Rc;
 
 struct Compiler {
@@ -112,7 +112,7 @@ impl Compiler {
             }
         }
         ir::Module {
-            types: self.wasm_types.types.clone(),
+            types: self.wasm_types.groups.clone(),
             imports,
             functions,
             exports,
@@ -521,7 +521,7 @@ impl Compiler {
 struct WasmTypes {
     semantics: Rc<Semantics>,
     unique_types: HashMap<Type, ir::TypeIdx>,
-    types: Vec<ir::Type>,
+    groups: Vec<ir::RecGroup>,
 }
 
 impl WasmTypes {
@@ -529,16 +529,46 @@ impl WasmTypes {
         Self {
             semantics,
             unique_types: HashMap::new(),
-            types: vec![],
+            groups: vec![],
         }
     }
 
+    /// Returns the Wasm type index for `ty`, defining it (and every type it
+    /// depends on) if it is not defined yet.
+    ///
+    /// New types are defined per strongly-connected component of the type
+    /// dependency graph: each SCC becomes one recursion group, appended after
+    /// the groups it depends on. Only types that are mutually recursive end
+    /// up sharing a group; everything else gets a single-type group.
     fn type_idx(&mut self, ty: &Type) -> ir::TypeIdx {
-        if let Some(idx) = self.unique_types.get(ty) {
+        let ty = self.canonical(ty);
+        if let Some(idx) = self.unique_types.get(&ty) {
             return *idx;
         }
 
-        let wasm_ty = match ty {
+        let sccs = {
+            let mut tarjan = Tarjan::new(self);
+            tarjan.visit(&ty);
+            tarjan.sccs
+        };
+        for scc in sccs {
+            // Reserve indices for the whole group up front so that mutually
+            // recursive members can refer to each other while being lowered.
+            for member in &scc {
+                let idx = self.unique_types.len() as ir::TypeIdx;
+                self.unique_types.insert(member.clone(), idx);
+            }
+            let types = scc.iter().map(|member| self.lower(member)).collect();
+            self.groups.push(ir::RecGroup { types });
+        }
+
+        self.unique_types[&ty]
+    }
+
+    /// Lowers a canonical heap type to its Wasm definition. Every heap type
+    /// it refers to must already have an index in `unique_types`.
+    fn lower(&mut self, ty: &Type) -> ir::Type {
+        match ty {
             Type::Function { params, ret } => {
                 let params = params.iter().map(|p| self.val_ty(p)).collect::<Vec<_>>();
                 let results = if let Type::Unit = ret.as_ref() {
@@ -558,23 +588,20 @@ impl WasmTypes {
                     .collect(),
             },
             _ => panic!("Type is not part of types section"),
-        };
-
-        let idx = self.types.len() as ir::TypeIdx;
-        self.types.push(wasm_ty);
-        self.unique_types.insert(ty.clone(), idx);
-        idx
+        }
     }
 
-    fn val_ty(&mut self, ty: &Type) -> ir::ValType {
+    /// The canonical form of a type used as key in `unique_types`: struct
+    /// references are resolved to the struct type they name.
+    fn canonical(&self, ty: &Type) -> Type {
+        self.heap_type(ty).unwrap_or_else(|| ty.clone())
+    }
+
+    /// Returns the canonical heap type a value of `ty` points to, if `ty` is
+    /// represented as a Wasm reference.
+    fn heap_type(&self, ty: &Type) -> Option<Type> {
         match ty {
-            Type::Int => ir::ValType::I64,
-            Type::Float => ir::ValType::F64,
-            Type::Bool => ir::ValType::I32,
-            Type::Array { .. } => {
-                let ty_idx = self.type_idx(ty);
-                ir::ValType::Ref(ty_idx)
-            }
+            Type::Array { .. } => Some(ty.clone()),
             Type::Reference { name } => {
                 let struct_ty = self
                     .semantics
@@ -582,9 +609,36 @@ impl WasmTypes {
                     .get(name)
                     .cloned()
                     .expect("struct type not found");
-                let ty_idx = self.type_idx(&struct_ty);
-                ir::ValType::Ref(ty_idx)
+                Some(struct_ty)
             }
+            _ => None,
+        }
+    }
+
+    /// The canonical heap types that `ty`'s Wasm definition refers to, in
+    /// definition order. These are the edges of the type dependency graph.
+    fn heap_deps(&self, ty: &Type) -> Vec<Type> {
+        match ty {
+            Type::Function { params, ret } => params
+                .iter()
+                .chain(std::iter::once(ret.as_ref()))
+                .filter_map(|t| self.heap_type(t))
+                .collect(),
+            Type::Array { ty } => self.heap_type(ty).into_iter().collect(),
+            Type::Struct { fields, .. } => fields
+                .iter()
+                .filter_map(|f| self.heap_type(&f.ty))
+                .collect(),
+            _ => vec![],
+        }
+    }
+
+    fn val_ty(&mut self, ty: &Type) -> ir::ValType {
+        match ty {
+            Type::Int => ir::ValType::I64,
+            Type::Float => ir::ValType::F64,
+            Type::Bool => ir::ValType::I32,
+            Type::Array { .. } | Type::Reference { .. } => ir::ValType::Ref(self.type_idx(ty)),
             _ => panic!("Type does not have equivalent Wasm value type"),
         }
     }
@@ -629,6 +683,85 @@ impl WasmTypes {
         };
         debug_assert!(struct_name == ref_name);
         fields
+    }
+}
+
+/// Tarjan's strongly-connected-components algorithm over the type dependency
+/// graph, restricted to types that don't have a Wasm index yet (types that
+/// are already defined live in earlier groups and are always valid to
+/// reference, so they are not part of the graph).
+///
+/// `sccs` ends up ordered dependencies-first: an SCC appears after every SCC
+/// it depends on, which is exactly the order recursion groups must be defined
+/// in the type section.
+/// See: https://en.wikipedia.org/wiki/Tarjan%27s_strongly_connected_components_algorithm
+struct Tarjan<'a> {
+    wasm_types: &'a WasmTypes,
+    index: HashMap<Type, usize>,
+    lowlink: HashMap<Type, usize>,
+    stack: Vec<Type>,
+    on_stack: HashSet<Type>,
+    next_index: usize,
+    sccs: Vec<Vec<Type>>,
+}
+
+impl<'a> Tarjan<'a> {
+    fn new(wasm_types: &'a WasmTypes) -> Self {
+        Self {
+            wasm_types,
+            index: HashMap::new(),
+            lowlink: HashMap::new(),
+            stack: Vec::new(),
+            on_stack: HashSet::new(),
+            next_index: 0,
+            sccs: Vec::new(),
+        }
+    }
+
+    fn visit(&mut self, ty: &Type) {
+        let index = self.next_index;
+        self.next_index += 1;
+        self.index.insert(ty.clone(), index);
+        self.lowlink.insert(ty.clone(), index);
+        self.stack.push(ty.clone());
+        self.on_stack.insert(ty.clone());
+
+        for dep in self.wasm_types.heap_deps(ty) {
+            if self.wasm_types.unique_types.contains_key(&dep) {
+                continue;
+            }
+            match self.index.get(&dep) {
+                None => {
+                    self.visit(&dep);
+                    let dep_lowlink = self.lowlink[&dep];
+                    let lowlink = self.lowlink.get_mut(ty).unwrap();
+                    *lowlink = (*lowlink).min(dep_lowlink);
+                }
+                Some(&dep_index) => {
+                    if self.on_stack.contains(&dep) {
+                        let lowlink = self.lowlink.get_mut(ty).unwrap();
+                        *lowlink = (*lowlink).min(dep_index);
+                    }
+                }
+            }
+        }
+
+        if self.lowlink[ty] == index {
+            let mut scc = Vec::new();
+            loop {
+                let member = self.stack.pop().expect("SCC stack is empty");
+                self.on_stack.remove(&member);
+                let is_root = member == *ty;
+                scc.push(member);
+                if is_root {
+                    break;
+                }
+            }
+            // Members were popped in reverse visit order; restore it so the
+            // group lists types in the order they were first reached.
+            scc.reverse();
+            self.sccs.push(scc);
+        }
     }
 }
 
