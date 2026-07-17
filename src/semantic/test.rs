@@ -1514,3 +1514,76 @@ fn error_negative_byte_literal() {
                           ^^ ─── Type mismatch: expected 'Byte', found 'Int'
     ");
 }
+
+// ── Builtin functions ────────────────────────────────────────────────────────
+
+#[test]
+fn valid_int_builtins() {
+    let src = r#"
+        fn f() Int {
+            return int_and(6, 3) + int_or(6, 3) + int_xor(6, 3) +
+                int_shl(1, 4) + int_shr(-8, 1) + int_shr_u(-1, 60) +
+                int_rotl(1, 3) + int_rotr(16, 3) + int_clz(1) + int_ctz(8) +
+                int_popcnt(255) + int_div_u(7, 2) + int_rem_u(7, 2)
+        }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn valid_float_builtins() {
+    let src = r#"
+        fn f() Float {
+            return float_min(float_sqrt(2.0), float_abs(-1.5)) +
+                float_max(float_ceil(0.5), float_floor(1.5)) +
+                float_copysign(float_trunc(2.7), float_nearest(-0.5))
+        }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn valid_conversion_builtins() {
+    let src = r#"
+        fn f() Byte {
+            return int_to_byte(byte_to_int(int_to_byte(65)) + 1)
+        }
+        fn g() Int {
+            return float_to_int(int_to_float(3))
+        }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn valid_byte_literal_comparison_via_conversion() {
+    // int_to_byte gives the Byte-vs-literal comparison a workaround.
+    let src = "fn f(b Byte) Bool { return b == int_to_byte(65) }";
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn error_builtin_redefinition() {
+    // Builtins are pre-declared in the root scope, so a user function with
+    // the same name collides.
+    assert_snapshot!(check("fn int_and(a Int, b Int) Int: a"), @"
+    fn int_and(a Int, b Int) Int: a
+       ^^^^^^^ ─── Name 'int_and' is already declared in this scope
+    ");
+}
+
+#[test]
+fn error_builtin_wrong_arg_type() {
+    assert_snapshot!(check("fn f() Int { return int_and(1.0, 2) }"), @"
+    fn f() Int { return int_and(1.0, 2) }
+                                ^^^ ─── Type mismatch: expected 'Int', found 'Float'
+    ");
+}
+
+#[test]
+fn error_builtin_wrong_arity() {
+    assert_snapshot!(check("fn f() Float { return float_sqrt(1.0, 2.0) }"), @"
+    fn f() Float { return float_sqrt(1.0, 2.0) }
+                          ^^^^^^^^^^ ─── Invalid function call: too many arguments
+    ");
+}

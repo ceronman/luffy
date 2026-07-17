@@ -263,9 +263,9 @@ struct Semantics {
 
 `DeclarationId` is an index into `semantics.declarations`.
 
-`Declaration::kind` is `DeclarationKind::Function`, `DeclarationKind::Import`, or `DeclarationKind::Local(fn_id)`, where `fn_id` is the `DeclarationId` of the enclosing function. The compiler uses `Local(fn_id)` to assign local variable indices per function, and distinguishes `Import` from `Function` so imports get the lowest Wasm function indices.
+`Declaration::kind` is `DeclarationKind::Function`, `DeclarationKind::Import`, `DeclarationKind::Struct`, `DeclarationKind::Builtin`, or `DeclarationKind::Local(fn_id)`, where `fn_id` is the `DeclarationId` of the enclosing function. The compiler uses `Local(fn_id)` to assign local variable indices per function, and distinguishes `Import` from `Function` so imports get the lowest Wasm function indices.
 
-All functions (including imports) are pre-declared before any body is type-checked, so forward calls and mutual recursion work without special handling.
+All functions (including imports) are pre-declared before any body is type-checked, so forward calls and mutual recursion work without special handling. Before that, `Resolver::declare_builtins` declares the builtin functions (`int_and`, `float_sqrt`, `int_to_byte`, … — see "Builtin Functions" below) in the root scope, so a user item reusing one of their names fails with "already declared".
 
 ---
 
@@ -289,6 +289,22 @@ The compiler interns Wasm types in a `WasmTypes` helper keyed by the semantic `T
 - `val_ty(&Type) -> ir::ValType` lowers a *value* type: `Int→i64`, `Float→f64`, `Bool→i32`, and `Array[T]→Ref(idx)` (creating the array type on demand). `Unit`/`Never`/`Function` are not value types (`todo!()`).
 - `wasm_ty(&Type) -> ir::Type` builds a *defined* type for the type section: `Function` → `(func ...)`, `Array[T]` → `(array (mut T'))`. Element/param/result types are lowered with `val_ty`, so a nested `Array[Array[Int]]` creates the inner array type **before** the outer one (no forward references).
 - `type_idx` dedupe by semantic `Type`, so two functions with the same signature — or two `Array[T]` with the same element type — share one type-section entry.
+
+---
+
+## Builtin Functions
+
+Builtins are functions pre-declared by the compiler (`Resolver::declare_builtins` in `semantic.rs`, `DeclarationKind::Builtin`) and lowered inline: `Compiler::expr`'s `Call` arm dispatches to `Compiler::builtin_call`, which emits a fixed instruction sequence at the call site instead of a `call`. They type-check exactly like user functions (arity and argument types), and they exist so that Wasm numeric instructions without a Luffy operator are reachable from source code.
+
+The current set (all signatures over `Int`/`Float`/`Byte`):
+
+- **Int ↦ Wasm `i64`**: `int_and`, `int_or`, `int_xor`, `int_shl`, `int_shr` (`shr_s`), `int_shr_u`, `int_rotl`, `int_rotr`, `int_clz`, `int_ctz`, `int_popcnt`, `int_div_u`, `int_rem_u`.
+- **Float ↦ Wasm `f64`**: `float_sqrt`, `float_abs`, `float_ceil`, `float_floor`, `float_trunc`, `float_nearest`, `float_min`, `float_max`, `float_copysign`.
+- **Conversions**: `int_to_float` (`f64.convert_i64_s`), `float_to_int` (`i64.trunc_f64_s`, traps on NaN/out-of-range), `byte_to_int` (`i64.extend_i32_u`), `int_to_byte` (range-checked: traps via `unreachable` unless 0–255).
+
+`int_to_byte` is the one multi-instruction lowering: it needs its argument twice, so it uses a per-function **i64 scratch local** (`Compiler::scratch_i64`), allocated lazily after params and user locals; `Compiler::function` appends it to the locals list when used. The single slot is safe to share between call sites because every inline sequence stores and consumes it without evaluating other expressions in between. The `if/unreachable` trap check opens a control frame, so the sequence wraps it in `loops.enter_frame()`/`exit_frame()` to keep `break`/`continue` label arithmetic correct.
+
+To add a new inline builtin: add its signature to `declare_builtins`, its lowering arm to `builtin_call`, any new `ir::Instruction` variants + `emit.rs` encodings, and tests at the semantic/compiler/emit layers (`language_tour.md` has a user-facing table to extend).
 
 ---
 

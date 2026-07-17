@@ -25,6 +25,7 @@ pub enum DeclarationKind {
     Function,
     Import,
     Struct,
+    Builtin,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -140,6 +141,7 @@ fn unify_ty(span: Span, expected: &Type, actual: &Type) -> crate::parser::Result
 impl Resolver {
     fn module(&mut self, module: &Module) -> Result<()> {
         self.begin_scope();
+        self.declare_builtins();
 
         for item in &module.items {
             match &item.kind {
@@ -225,6 +227,54 @@ impl Resolver {
         Ok(())
     }
 
+    fn declare_builtins(&mut self) {
+        use Type::{Byte, Float, Int};
+        // TODO: is slice required here?
+        let builtins: &[(&str, &[Type], Type)] = &[
+            ("byte_to_int", &[Byte], Int),
+            ("int_to_byte", &[Int], Byte),
+            ("int_and", &[Int, Int], Int),
+            ("int_or", &[Int, Int], Int),
+            ("int_xor", &[Int, Int], Int),
+            ("int_shl", &[Int, Int], Int),
+            ("int_shr", &[Int, Int], Int),
+            ("int_shr_u", &[Int, Int], Int),
+            ("int_rotl", &[Int, Int], Int),
+            ("int_rotr", &[Int, Int], Int),
+            ("int_clz", &[Int], Int),
+            ("int_ctz", &[Int], Int),
+            ("int_popcnt", &[Int], Int),
+            ("int_div_u", &[Int, Int], Int),
+            ("int_rem_u", &[Int, Int], Int),
+            ("float_sqrt", &[Float], Float),
+            ("float_abs", &[Float], Float),
+            ("float_ceil", &[Float], Float),
+            ("float_floor", &[Float], Float),
+            ("float_trunc", &[Float], Float),
+            ("float_nearest", &[Float], Float),
+            ("float_min", &[Float, Float], Float),
+            ("float_max", &[Float, Float], Float),
+            ("float_copysign", &[Float, Float], Float),
+            ("int_to_float", &[Int], Float),
+            ("float_to_int", &[Float], Int),
+        ];
+        for (name, params, ret) in builtins {
+            let ty = Type::Function {
+                params: Rc::from(*params),
+                ret: Rc::from(ret.clone()),
+            };
+            let decl_id = self.semantics.declarations.len();
+            self.semantics.declarations.push(Declaration {
+                id: decl_id,
+                name: (*name).to_string(),
+                ty,
+                kind: DeclarationKind::Builtin,
+            });
+            let scope = self.scopes.front_mut().expect("Declaration without scope");
+            scope.insert((*name).to_string(), decl_id);
+        }
+    }
+
     fn function(&mut self, name: &Identifier, params: &[Param], body: &Block) -> Result<()> {
         let decl_id = self.lookup(name)?;
         self.semantics.uses.insert(name.node.id, decl_id);
@@ -296,7 +346,9 @@ impl Resolver {
                     if *value > 255 {
                         return type_err(
                             expr.node.span,
-                            format!("Integer literal '{value}' is out of range for 'Byte' (0 to 255)"),
+                            format!(
+                                "Integer literal '{value}' is out of range for 'Byte' (0 to 255)"
+                            ),
                         );
                     }
                     Type::Byte

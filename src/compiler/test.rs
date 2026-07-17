@@ -1433,3 +1433,64 @@ fn byte_comparison_uses_unsigned_i32_instructions() {
     )
     ");
 }
+
+// ── Builtin functions ────────────────────────────────────────────────────────
+
+#[test]
+fn builtin_calls_inline_instructions() {
+    // A builtin call site expands to its instruction sequence — no `call`.
+    let wat = compile_to_wat("fn f(a Int, b Int) Int: int_and(int_shl(a, 1), int_popcnt(b))");
+    assert_snapshot!(wat, @"
+    (module
+      (type (;0;) (func (param i64 i64) (result i64)))
+      (func (;0;) (type 0) (param i64 i64) (result i64)
+        local.get 0
+        i64.const 1
+        i64.shl
+        local.get 1
+        i64.popcnt
+        i64.and
+      )
+    )
+    ");
+}
+
+#[test]
+fn int_to_byte_inlines_range_check_trap() {
+    // int_to_byte allocates the function's i64 scratch local (after params
+    // and user locals) and traps via `unreachable` when the value is
+    // outside 0..=255 (unsigned compare, so negatives look huge).
+    assert_snapshot!(compile_to_wat("fn f(n Int) Byte { return int_to_byte(n) }"), @"
+    (module
+      (type (;0;) (func (param i64) (result i32)))
+      (func (;0;) (type 0) (param i64) (result i32)
+        (local i64)
+        local.get 0
+        local.set 1
+        local.get 1
+        i64.const 255
+        i64.gt_u
+        if ;; label = @1
+          unreachable
+        end
+        local.get 1
+        i32.wrap_i64
+        return
+      )
+    )
+    ");
+}
+
+#[test]
+fn float_builtin_and_conversion_instructions() {
+    assert_snapshot!(compile_to_wat("fn f(x Float) Int: float_to_int(float_nearest(x))"), @"
+    (module
+      (type (;0;) (func (param f64) (result i64)))
+      (func (;0;) (type 0) (param f64) (result i64)
+        local.get 0
+        f64.nearest
+        i64.trunc_f64_s
+      )
+    )
+    ");
+}

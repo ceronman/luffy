@@ -77,6 +77,7 @@ pub enum Instruction {
     Br(LabelIdx),
     BrIf(LabelIdx),
     Return,
+    Unreachable,
 
     I64Const(i64),
     I64Add,
@@ -84,6 +85,19 @@ pub enum Instruction {
     I64Mul,
     I64DivS,
     I64RemS,
+    I64DivU,
+    I64RemU,
+    I64And,
+    I64Or,
+    I64Xor,
+    I64Shl,
+    I64ShrS,
+    I64ShrU,
+    I64Rotl,
+    I64Rotr,
+    I64Clz,
+    I64Ctz,
+    I64Popcnt,
 
     I64Eq,
     I64Ne,
@@ -91,6 +105,10 @@ pub enum Instruction {
     I64GtS,
     I64LeS,
     I64LtS,
+    I64GtU,
+
+    I64ExtendI32U,
+    I64TruncF64S,
 
     F64Const(f64),
     F64Add,
@@ -98,6 +116,16 @@ pub enum Instruction {
     F64Mul,
     F64Div,
     F64Neg,
+    F64Sqrt,
+    F64Abs,
+    F64Ceil,
+    F64Floor,
+    F64Trunc,
+    F64Nearest,
+    F64Min,
+    F64Max,
+    F64Copysign,
+    F64ConvertI64S,
 
     F64Eq,
     F64Ne,
@@ -114,11 +142,20 @@ pub enum Instruction {
     /// Read from an array of packed (`i8`/`i16`) elements, zero-extending.
     ArrayGetU(TypeIdx),
     ArraySet(TypeIdx),
-    ArrayNewFixed { type_idx: TypeIdx, len: u32 },
+    ArrayNewFixed {
+        type_idx: TypeIdx,
+        len: u32,
+    },
 
     StructNew(TypeIdx),
-    StructGet { type_idx: TypeIdx, field_idx: u32 },
-    StructSet { type_idx: TypeIdx, field_idx: u32 },
+    StructGet {
+        type_idx: TypeIdx,
+        field_idx: u32,
+    },
+    StructSet {
+        type_idx: TypeIdx,
+        field_idx: u32,
+    },
 
     Call(FuncIdx),
     End,

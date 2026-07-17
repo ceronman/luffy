@@ -537,7 +537,7 @@ xs[0] = 200                          // assigned literal inferred as Byte
 
 The literal is range-checked at compile time, so `let b Byte = 256` is an error. Negation is not part of a literal, so `let b Byte = -1` is also an error: `-1` is the negation of the `Int` literal `1`, and negation produces an `Int`.
 
-Bytes support equality and ordering comparisons — unsigned, so `200 > 100` holds even though 200 does not fit in a signed byte — and nothing else. There is **no `Byte` arithmetic**:
+Bytes support equality and ordering comparisons — unsigned, so `200 > 100` holds even though 200 does not fit in a signed byte — and nothing else. There is **no `Byte` arithmetic**; do byte math in `Int` and convert back (`int_to_byte(byte_to_int(a) + byte_to_int(b))`):
 
 ```luffy
 fn max_byte(a Byte, b Byte) Byte {
@@ -550,19 +550,83 @@ fn max_byte(a Byte, b Byte) Byte {
 let sum Byte = a + b   // error: Operator requires numeric type
 ```
 
-Only literals adapt to an expected type; everywhere else there is no implicit conversion between `Int` and `Byte`. In particular, the operands of a comparison have no expected type, so comparing a `Byte` directly against an integer literal is a type error — bind the literal to a `Byte` variable first:
+Only literals adapt to an expected type; everywhere else there is no implicit conversion between `Int` and `Byte`. In particular, the operands of a comparison have no expected type, so comparing a `Byte` directly against an integer literal is a type error — bind the literal to a `Byte` variable first, or convert it:
 
 ```luffy
 let b Byte = 65
-let bad Bool = b == 65    // error: expected 'Byte', found 'Int'
+let bad Bool = b == 65               // error: expected 'Byte', found 'Int'
 
 let sixty_five Byte = 65
 let ok Bool = b == sixty_five
+let also_ok Bool = b == int_to_byte(65)
 ```
 
-Explicit conversion functions (`byte_to_int`, `int_to_byte`) arrive with the builtin functions in a later phase.
+`Byte` converts to and from `Int` with the builtins `byte_to_int(b)` (always succeeds) and `int_to_byte(n)` (traps at runtime unless `n` is in 0–255) — see [Builtin functions](#builtin-functions).
 
 `Array[Byte]` is stored *packed*: each element occupies a single byte on the heap, unlike `Array[Int]` whose elements are eight bytes each. This is invisible in the language — indexing, assignment, and bounds behavior work like any other array.
+
+---
+
+## Builtin functions
+
+Luffy pre-declares a set of builtin functions. They are called and type-checked like ordinary functions, but the compiler expands each call inline into one or a few Wasm instructions — there is no function call at runtime. Because they occupy the ordinary function namespace, declaring your own function with a builtin's name is an error ("already declared").
+
+The set covers the Wasm numeric operations that have no Luffy operator, plus the `Byte`/`Int` conversions:
+
+```luffy
+import fn print_int(x Int)
+
+export fn main() {
+    print_int(int_popcnt(255))      // 8
+    print_int(int_shr(-8, 1))       // -4
+    print_int(float_to_int(2.9))    // 2
+    let b Byte = int_to_byte(200)
+    print_int(byte_to_int(b) + 1)   // 201
+}
+```
+
+### Integer builtins
+
+| Function | Result |
+|----------|--------|
+| `int_and(a Int, b Int) Int` | bitwise AND |
+| `int_or(a Int, b Int) Int` | bitwise OR |
+| `int_xor(a Int, b Int) Int` | bitwise XOR |
+| `int_shl(a Int, n Int) Int` | shift left |
+| `int_shr(a Int, n Int) Int` | arithmetic shift right (keeps the sign) |
+| `int_shr_u(a Int, n Int) Int` | logical shift right (fills with zeros) |
+| `int_rotl(a Int, n Int) Int` | rotate bits left |
+| `int_rotr(a Int, n Int) Int` | rotate bits right |
+| `int_clz(a Int) Int` | count leading zero bits (64 for 0) |
+| `int_ctz(a Int) Int` | count trailing zero bits (64 for 0) |
+| `int_popcnt(a Int) Int` | count one bits |
+| `int_div_u(a Int, b Int) Int` | unsigned division |
+| `int_rem_u(a Int, b Int) Int` | unsigned remainder |
+
+Shift and rotate counts are taken modulo 64, following Wasm. `/` and `%` are the *signed* division and remainder; the `_u` variants reinterpret both operands as unsigned 64-bit values (so a negative operand looks huge). Like their signed counterparts, they trap when the divisor is zero.
+
+### Float builtins
+
+| Function | Result |
+|----------|--------|
+| `float_sqrt(x Float) Float` | square root |
+| `float_abs(x Float) Float` | absolute value |
+| `float_ceil(x Float) Float` | round up |
+| `float_floor(x Float) Float` | round down |
+| `float_trunc(x Float) Float` | round toward zero |
+| `float_nearest(x Float) Float` | round to nearest, ties to even |
+| `float_min(a Float, b Float) Float` | minimum |
+| `float_max(a Float, b Float) Float` | maximum |
+| `float_copysign(a Float, b Float) Float` | `a` with the sign of `b` |
+
+### Conversions
+
+| Function | Result |
+|----------|--------|
+| `int_to_float(n Int) Float` | exact for magnitudes below 2⁵³ |
+| `float_to_int(x Float) Int` | truncates toward zero; **traps** on NaN or out-of-range values |
+| `byte_to_int(b Byte) Int` | always succeeds |
+| `int_to_byte(n Int) Byte` | **traps** unless `n` is in 0–255 |
 
 ---
 

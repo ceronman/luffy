@@ -1185,3 +1185,193 @@ fn byte_through_functions_and_structs() {
     true
     ");
 }
+
+// ── Builtin functions ────────────────────────────────────────────────────────
+
+/// Runs a main body that is expected to trap, returning the trap message.
+fn run_main_trap(body: &str) -> String {
+    let mut src = String::new();
+    src.push_str("import fn print_int(x Int)\n");
+    src.push_str("import fn print_float(x Float)\n");
+    src.push_str("import fn print_bool(x Bool)\n");
+    src.push_str("export fn main() {\n");
+    src.push_str(body);
+    src.push_str("}\n");
+    let module = parser::parse(&src).expect("parse error");
+    let semantics = semantic::semantic_analysis(&module).expect("semantic error");
+    let wasm_module = compiler::compile(&module, semantics);
+    let binary = emit::emit(wasm_module);
+    match run_to_stdout(&binary) {
+        Ok(_) => "<no trap>".to_string(),
+        Err(e) => {
+            // The trap is the root cause of the wasmtime error chain; the
+            // outer layers carry an unstable wasm backtrace.
+            let mut cause: &dyn std::error::Error = e.as_ref();
+            while let Some(source) = cause.source() {
+                cause = source;
+            }
+            cause.to_string()
+        }
+    }
+}
+
+#[test]
+fn builtin_int_bitwise() {
+    let src = r#"
+        print_int(int_and(12, 10))
+        print_int(int_or(12, 10))
+        print_int(int_xor(12, 10))
+    "#;
+    assert_snapshot!(run_main(src), @"
+    8
+    14
+    6
+    ");
+}
+
+#[test]
+fn builtin_int_shifts_and_rotates() {
+    // int_shr is arithmetic (sign-preserving), int_shr_u is logical; the
+    // rotate wraps bits around the i64 width.
+    let src = r#"
+        print_int(int_shl(1, 4))
+        print_int(int_shr(-8, 1))
+        print_int(int_shr_u(-1, 60))
+        print_int(int_rotl(1, 3))
+        print_int(int_rotr(16, 3))
+        print_int(int_rotl(int_shl(1, 63), 1))
+    "#;
+    assert_snapshot!(run_main(src), @"
+    16
+    -4
+    15
+    8
+    2
+    1
+    ");
+}
+
+#[test]
+fn builtin_int_bit_counts() {
+    let src = r#"
+        print_int(int_clz(1))
+        print_int(int_ctz(8))
+        print_int(int_popcnt(255))
+        print_int(int_clz(0))
+    "#;
+    assert_snapshot!(run_main(src), @"
+    63
+    3
+    8
+    64
+    ");
+}
+
+#[test]
+fn builtin_int_unsigned_div_rem() {
+    // Negative operands are treated as huge unsigned values.
+    let src = r#"
+        print_int(int_div_u(7, 2))
+        print_int(int_rem_u(7, 2))
+        print_int(int_div_u(-2, 2))
+        print_int(int_rem_u(-1, 10))
+    "#;
+    assert_snapshot!(run_main(src), @"
+    3
+    1
+    9223372036854775807
+    5
+    ");
+}
+
+#[test]
+fn builtin_float_rounding() {
+    // float_nearest rounds half to even, per Wasm.
+    let src = r#"
+        print_float(float_ceil(2.3))
+        print_float(float_floor(-2.3))
+        print_float(float_trunc(-2.7))
+        print_float(float_nearest(2.5))
+        print_float(float_nearest(3.5))
+    "#;
+    assert_snapshot!(run_main(src), @"
+    3
+    -3
+    -2
+    2
+    4
+    ");
+}
+
+#[test]
+fn builtin_float_math() {
+    let src = r#"
+        print_float(float_sqrt(9.0))
+        print_float(float_abs(-1.5))
+        print_float(float_min(1.5, 2.5))
+        print_float(float_max(1.5, 2.5))
+        print_float(float_copysign(3.0, -1.0))
+    "#;
+    assert_snapshot!(run_main(src), @"
+    3
+    1.5
+    1.5
+    2.5
+    -3
+    ");
+}
+
+#[test]
+fn builtin_numeric_conversions() {
+    // float_to_int truncates toward zero.
+    let src = r#"
+        print_float(int_to_float(3))
+        print_int(float_to_int(3.9))
+        print_int(float_to_int(-3.9))
+    "#;
+    assert_snapshot!(run_main(src), @"
+    3
+    3
+    -3
+    ");
+}
+
+#[test]
+fn builtin_byte_conversions() {
+    let src = r#"
+        let b Byte = 200
+        print_int(byte_to_int(b))
+        print_bool(b == int_to_byte(200))
+        let xs Array[Byte] = [65]
+        print_int(byte_to_int(xs[0]) + 1)
+        print_int(byte_to_int(int_to_byte(255)))
+        print_int(byte_to_int(int_to_byte(0)))
+    "#;
+    assert_snapshot!(run_main(src), @"
+    200
+    true
+    66
+    255
+    0
+    ");
+}
+
+#[test]
+fn builtin_int_to_byte_traps_above_range() {
+    assert_snapshot!(run_main_trap("int_to_byte(256)"), @"wasm trap: wasm `unreachable` instruction executed");
+}
+
+#[test]
+fn builtin_int_to_byte_traps_negative() {
+    assert_snapshot!(run_main_trap("int_to_byte(-1)"), @"wasm trap: wasm `unreachable` instruction executed");
+}
+
+#[test]
+fn builtin_float_to_int_traps_out_of_range() {
+    assert_snapshot!(run_main_trap("float_to_int(1e300)"), @"wasm trap: integer overflow");
+}
+
+#[test]
+fn builtin_int_div_u_traps_on_zero() {
+    assert_snapshot!(run_main_trap("int_div_u(1, 0)"), @"wasm trap: integer divide by zero");
+}

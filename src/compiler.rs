@@ -14,6 +14,11 @@ struct Compiler {
     func_addresses: HashMap<DeclarationId, FuncAddress>,
     loops: Loops,
     wasm_types: WasmTypes,
+
+    /// Index of the current function's i64 scratch local, allocated after
+    /// params and user locals on first use (see `scratch_i64`).
+    scratch_i64: Option<ir::LocalIdx>,
+    scratch_base: ir::LocalIdx,
 }
 
 #[derive(Clone, Copy)]
@@ -127,15 +132,22 @@ impl Compiler {
         body: &ast::Block,
     ) -> ir::Function {
         let func_id = self.declaration_id(name);
-        let locals = self
+        let mut locals = self
             .function_locals(func_id)
             .skip(params.len())
             .map(|d| self.local_addresses[&d.id].ty)
             .collect::<Vec<ir::ValType>>();
-        // Each function body starts with a clean control-frame state.
+        // Each function body starts with a clean control-frame state and no
+        // scratch local; the scratch slot comes after params and user locals.
+        // TODO: maybe add some sort of reset-frame or frame struct.
         self.loops.reset();
+        self.scratch_base = (params.len() + locals.len()) as ir::LocalIdx;
+        self.scratch_i64 = None;
         let mut ins = Vec::new();
         self.block(&mut ins, body);
+        if self.scratch_i64.is_some() {
+            locals.push(ir::ValType::I64);
+        }
         ins.push(ir::Instruction::End);
         ir::Function {
             ty,
@@ -358,11 +370,17 @@ impl Compiler {
                 let ast::ExprKind::Variable { name } = &callee.kind else {
                     panic!("Invalid callee");
                 };
-                let address = self.func_addr(name);
                 for arg in args {
                     self.expr(ins, arg);
                 }
-                ins.push(ir::Instruction::Call(address.idx));
+                let decl_id = self.declaration_id(name);
+                if let DeclarationKind::Builtin = self.semantics.declarations[decl_id].kind {
+                    let builtin = self.semantics.declarations[decl_id].name.clone();
+                    self.builtin_call(ins, &builtin);
+                } else {
+                    let address = self.func_addr(name);
+                    ins.push(ir::Instruction::Call(address.idx));
+                }
             }
             ast::ExprKind::Assignment { target, value } => match &target.kind {
                 ast::ExprKind::Variable { name } => {
@@ -458,6 +476,63 @@ impl Compiler {
                 ins.push(ir::Instruction::Return);
             }
         }
+    }
+
+    /// Lowers a call to a builtin function to its inline instruction
+    /// sequence. The arguments are already on the stack.
+    fn builtin_call(&mut self, ins: &mut Vec<ir::Instruction>, name: &str) {
+        use ir::Instruction as I;
+        match name {
+            "byte_to_int" => ins.push(I::I64ExtendI32U),
+            "int_to_byte" => {
+                // Traps unless 0 <= n <= 255; the unsigned comparison makes
+                // negative values look huge.
+                let tmp = self.scratch_i64();
+                ins.push(I::LocalSet(tmp));
+                ins.push(I::LocalGet(tmp));
+                ins.push(I::I64Const(255));
+                ins.push(I::I64GtU);
+                ins.push(I::If(ir::BlockType::Empty));
+                self.loops.enter_frame();
+                ins.push(I::Unreachable);
+                ins.push(I::End);
+                self.loops.exit_frame();
+                ins.push(I::LocalGet(tmp));
+                ins.push(I::I32WrapI64);
+            }
+            "int_and" => ins.push(I::I64And),
+            "int_or" => ins.push(I::I64Or),
+            "int_xor" => ins.push(I::I64Xor),
+            "int_shl" => ins.push(I::I64Shl),
+            "int_shr" => ins.push(I::I64ShrS),
+            "int_shr_u" => ins.push(I::I64ShrU),
+            "int_rotl" => ins.push(I::I64Rotl),
+            "int_rotr" => ins.push(I::I64Rotr),
+            "int_clz" => ins.push(I::I64Clz),
+            "int_ctz" => ins.push(I::I64Ctz),
+            "int_popcnt" => ins.push(I::I64Popcnt),
+            "int_div_u" => ins.push(I::I64DivU),
+            "int_rem_u" => ins.push(I::I64RemU),
+            "float_sqrt" => ins.push(I::F64Sqrt),
+            "float_abs" => ins.push(I::F64Abs),
+            "float_ceil" => ins.push(I::F64Ceil),
+            "float_floor" => ins.push(I::F64Floor),
+            "float_trunc" => ins.push(I::F64Trunc),
+            "float_nearest" => ins.push(I::F64Nearest),
+            "float_min" => ins.push(I::F64Min),
+            "float_max" => ins.push(I::F64Max),
+            "float_copysign" => ins.push(I::F64Copysign),
+            "int_to_float" => ins.push(I::F64ConvertI64S),
+            "float_to_int" => ins.push(I::I64TruncF64S),
+            _ => panic!("Unknown builtin function '{name}'"),
+        }
+    }
+
+    /// The current function's i64 scratch local, for inline builtin
+    /// sequences. A single slot is safe to share: every sequence stores and
+    /// consumes it without evaluating other expressions in between.
+    fn scratch_i64(&mut self) -> ir::LocalIdx {
+        *self.scratch_i64.get_or_insert(self.scratch_base)
     }
 
     // TODO: very similar to `block`, duplication
@@ -853,6 +928,8 @@ pub fn compile(module: &ast::Module, semantics: Semantics) -> ir::Module {
         local_addresses: Default::default(),
         func_addresses: Default::default(),
         loops: Default::default(),
+        scratch_i64: None,
+        scratch_base: 0,
     };
     compiler.module(module)
 }
