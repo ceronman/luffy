@@ -1115,3 +1115,73 @@ fn empty_struct_constructs() {
     "#;
     assert_snapshot!(compile_and_run(src), @"1");
 }
+
+// ── Byte ─────────────────────────────────────────────────────────────────────
+
+#[test]
+fn byte_comparisons() {
+    // Byte has no printer yet; results are observed through print_bool.
+    let src = r#"
+        let a Byte = 65
+        let b Byte = 200
+        print_bool(a == a)
+        print_bool(a == b)
+        print_bool(a < b)
+        print_bool(b <= a)
+    "#;
+    assert_snapshot!(run_main(src), @"
+    true
+    false
+    true
+    false
+    ");
+}
+
+#[test]
+fn byte_comparisons_are_unsigned() {
+    // 200 stored in an i8 field would be negative if read sign-extended;
+    // `array.get_u` + unsigned comparisons must see it as 200 > 100.
+    let src = r#"
+        let xs Array[Byte] = [200, 100]
+        print_bool(xs[0] > xs[1])
+    "#;
+    assert_snapshot!(run_main(src), @"true");
+}
+
+#[test]
+fn byte_array_read_write() {
+    let src = r#"
+        let xs Array[Byte] = [72, 105]
+        let max Byte = 255
+        print_bool(xs[0] < xs[1])
+        xs[0] = max
+        print_bool(xs[0] < xs[1])
+        print_bool(xs[0] == max)
+    "#;
+    assert_snapshot!(run_main(src), @"
+    true
+    false
+    true
+    ");
+}
+
+#[test]
+fn byte_through_functions_and_structs() {
+    let src = r#"
+        import fn print_bool(x Bool)
+        struct Pixel { r Byte; g Byte }
+        fn max_byte(a Byte, b Byte) Byte {
+            if a < b { return b }
+            return a
+        }
+        export fn main() {
+            let p Pixel = { r = 255, g = 128 }
+            print_bool(max_byte(p.r, p.g) == p.r)
+            print_bool(p.g < p.r)
+        }
+    "#;
+    assert_snapshot!(compile_and_run(src), @"
+    true
+    true
+    ");
+}

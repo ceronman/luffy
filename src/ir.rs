@@ -62,6 +62,14 @@ pub enum Instruction {
     I32Const(i32),
     I32Eqz,
     I32WrapI64,
+
+    I32Eq,
+    I32Ne,
+    I32GeU,
+    I32GtU,
+    I32LeU,
+    I32LtU,
+
     If(BlockType),
     Else,
     Block(BlockType),
@@ -103,6 +111,8 @@ pub enum Instruction {
     Drop,
 
     ArrayGet(TypeIdx),
+    /// Read from an array of packed (`i8`/`i16`) elements, zero-extending.
+    ArrayGetU(TypeIdx),
     ArraySet(TypeIdx),
     ArrayNewFixed { type_idx: TypeIdx, len: u32 },
 

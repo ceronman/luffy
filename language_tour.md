@@ -22,13 +22,16 @@ export fn main() {
 
 ## Types
 
-Luffy has three primitive types:
+Luffy has four primitive types:
 
 | Type    | Description              | Example       |
 |---------|--------------------------|---------------|
 | `Int`   | 64-bit signed integer    | `42`, `-7`    |
 | `Float` | 64-bit floating-point    | `3.14`, `-1.5`|
 | `Bool`  | Boolean                  | `true`, `false`|
+| `Byte`  | 8-bit unsigned integer   | `65` (in `Byte` context) |
+
+`Byte` has no literal syntax of its own — an integer literal becomes a `Byte` when it appears where a `Byte` is expected. See the [Bytes](#bytes) section below.
 
 Types are always written with a capital letter. There are no implicit conversions between types — `Int` and `Float` are distinct.
 
@@ -517,6 +520,49 @@ export fn main() {
 ```
 
 > Note: arrays are compared by reference identity only at the IR level, and equality (`==`/`!=`) on arrays is not currently supported by the code generator. Compare individual elements instead.
+
+---
+
+## Bytes
+
+`Byte` is an 8-bit unsigned integer type with values from 0 to 255. It exists chiefly as the element type of byte arrays (and, in a coming phase, as the building block of strings).
+
+`Byte` has no literal syntax of its own. Instead, an integer literal becomes a `Byte` when it appears where a `Byte` is expected — a `let` with a `Byte` annotation, an argument for a `Byte` parameter, an element of an `Array[Byte]` literal, a `Byte` struct field, an assignment to a `Byte` target, or a `Byte` return value:
+
+```luffy
+let b Byte = 65                      // literal inferred as Byte
+let xs Array[Byte] = [72, 105, 33]   // elements inferred as Byte
+xs[0] = 200                          // assigned literal inferred as Byte
+```
+
+The literal is range-checked at compile time, so `let b Byte = 256` is an error. Negation is not part of a literal, so `let b Byte = -1` is also an error: `-1` is the negation of the `Int` literal `1`, and negation produces an `Int`.
+
+Bytes support equality and ordering comparisons — unsigned, so `200 > 100` holds even though 200 does not fit in a signed byte — and nothing else. There is **no `Byte` arithmetic**:
+
+```luffy
+fn max_byte(a Byte, b Byte) Byte {
+    if a < b {
+        return b
+    }
+    return a
+}
+
+let sum Byte = a + b   // error: Operator requires numeric type
+```
+
+Only literals adapt to an expected type; everywhere else there is no implicit conversion between `Int` and `Byte`. In particular, the operands of a comparison have no expected type, so comparing a `Byte` directly against an integer literal is a type error — bind the literal to a `Byte` variable first:
+
+```luffy
+let b Byte = 65
+let bad Bool = b == 65    // error: expected 'Byte', found 'Int'
+
+let sixty_five Byte = 65
+let ok Bool = b == sixty_five
+```
+
+Explicit conversion functions (`byte_to_int`, `int_to_byte`) arrive with the builtin functions in a later phase.
+
+`Array[Byte]` is stored *packed*: each element occupies a single byte on the heap, unlike `Array[Int]` whose elements are eight bytes each. This is invisible in the language — indexing, assignment, and bounds behavior work like any other array.
 
 ---
 

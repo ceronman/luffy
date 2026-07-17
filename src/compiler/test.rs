@@ -1379,3 +1379,57 @@ fn nested_struct_creates_inner_type_first() {
     )
     ");
 }
+
+// ── Byte ─────────────────────────────────────────────────────────────────────
+
+#[test]
+fn byte_array_is_packed_and_read_unsigned() {
+    // `Array[Byte]` is the packed `(array (mut i8))`; reads use `array.get_u`
+    // (plain `array.get` is invalid on packed arrays, and Byte is unsigned).
+    assert_snapshot!(compile_to_wat("fn first(xs Array[Byte]) Byte { return xs[0] }"), @"
+    (module
+      (type (;0;) (array (mut i8)))
+      (type (;1;) (func (param (ref null 0)) (result i32)))
+      (func (;0;) (type 1) (param (ref null 0)) (result i32)
+        local.get 0
+        i64.const 0
+        i32.wrap_i64
+        array.get_u 0
+        return
+      )
+    )
+    ");
+}
+
+#[test]
+fn byte_array_write_uses_i32_literal() {
+    // A literal stored into a Byte element types as Byte, so it compiles to
+    // `i32.const`, not `i64.const`; `array.set` truncates i32 to the i8 field.
+    assert_snapshot!(compile_to_wat("fn set(xs Array[Byte]) { xs[0] = 200 }"), @"
+    (module
+      (type (;0;) (array (mut i8)))
+      (type (;1;) (func (param (ref null 0))))
+      (func (;0;) (type 1) (param (ref null 0))
+        local.get 0
+        i64.const 0
+        i32.wrap_i64
+        i32.const 200
+        array.set 0
+      )
+    )
+    ");
+}
+
+#[test]
+fn byte_comparison_uses_unsigned_i32_instructions() {
+    assert_snapshot!(compile_to_wat("fn less(a Byte, b Byte) Bool: a < b"), @"
+    (module
+      (type (;0;) (func (param i32 i32) (result i32)))
+      (func (;0;) (type 0) (param i32 i32) (result i32)
+        local.get 0
+        local.get 1
+        i32.lt_u
+      )
+    )
+    ");
+}

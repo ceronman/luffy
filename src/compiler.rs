@@ -221,7 +221,15 @@ impl Compiler {
     fn expr(&mut self, ins: &mut Vec<ir::Instruction>, expr: &ast::Expr) {
         match &expr.kind {
             ast::ExprKind::Literal { kind } => match kind {
-                ast::LiteralKind::Int(value) => ins.push(ir::Instruction::I64Const(*value)),
+                // An integer literal may have been typed as `Byte` from its
+                // expected type; `Byte` values are i32 at runtime.
+                ast::LiteralKind::Int(value) => {
+                    if self.node_type(expr.node).is_byte() {
+                        ins.push(ir::Instruction::I32Const(*value as i32))
+                    } else {
+                        ins.push(ir::Instruction::I64Const(*value))
+                    }
+                }
                 ast::LiteralKind::Float(value) => ins.push(ir::Instruction::F64Const(*value)),
                 ast::LiteralKind::Bool(value) => ins.push(ir::Instruction::I32Const(*value as i32)),
                 // Semantic analysis rejects `Str` literals before compilation
@@ -327,6 +335,15 @@ impl Compiler {
                     (ast::BinOpKind::Le, Type::Int) => ins.push(ir::Instruction::I64LeS),
                     (ast::BinOpKind::Lt, Type::Int) => ins.push(ir::Instruction::I64LtS),
 
+                    // `Byte` is i32 at runtime and unsigned, so comparisons
+                    // use the unsigned i32 instructions.
+                    (ast::BinOpKind::Eq, Type::Byte) => ins.push(ir::Instruction::I32Eq),
+                    (ast::BinOpKind::Ne, Type::Byte) => ins.push(ir::Instruction::I32Ne),
+                    (ast::BinOpKind::Ge, Type::Byte) => ins.push(ir::Instruction::I32GeU),
+                    (ast::BinOpKind::Gt, Type::Byte) => ins.push(ir::Instruction::I32GtU),
+                    (ast::BinOpKind::Le, Type::Byte) => ins.push(ir::Instruction::I32LeU),
+                    (ast::BinOpKind::Lt, Type::Byte) => ins.push(ir::Instruction::I32LtU),
+
                     (ast::BinOpKind::Eq, Type::Float) => ins.push(ir::Instruction::F64Eq),
                     (ast::BinOpKind::Ne, Type::Float) => ins.push(ir::Instruction::F64Ne),
                     (ast::BinOpKind::Ge, Type::Float) => ins.push(ir::Instruction::F64Ge),
@@ -377,11 +394,17 @@ impl Compiler {
             },
             ast::ExprKind::Index { expr, index } => {
                 let ty = self.node_type(expr.node);
-                let ty = self.wasm_types.type_idx(&ty);
+                let ty_idx = self.wasm_types.type_idx(&ty);
                 self.expr(ins, expr);
                 self.expr(ins, index);
                 ins.push(ir::Instruction::I32WrapI64);
-                ins.push(ir::Instruction::ArrayGet(ty));
+                // Packed arrays have no plain `array.get`: reads must pick a
+                // sign extension, and `Byte` is unsigned.
+                if is_byte_array(&ty) {
+                    ins.push(ir::Instruction::ArrayGetU(ty_idx));
+                } else {
+                    ins.push(ir::Instruction::ArrayGet(ty_idx));
+                }
             }
             ast::ExprKind::Field { expr, field } => {
                 let ty = self.node_type(expr.node);
@@ -518,6 +541,11 @@ impl Compiler {
     }
 }
 
+// TODO: make method
+fn is_byte_array(ty: &Type) -> bool {
+    matches!(ty, Type::Array { ty } if ty.is_byte())
+}
+
 struct WasmTypes {
     semantics: Rc<Semantics>,
     unique_types: HashMap<Type, ir::TypeIdx>,
@@ -579,7 +607,11 @@ impl WasmTypes {
                 ir::Type::Function { params, results }
             }
             Type::Array { ty } => ir::Type::Array {
-                ty: ir::StorageType::Val(self.val_ty(ty)),
+                ty: if ty.is_byte() {
+                    ir::StorageType::I8
+                } else {
+                    ir::StorageType::Val(self.val_ty(ty))
+                },
             },
             Type::Struct { fields, .. } => ir::Type::Struct {
                 fields: fields
@@ -638,6 +670,7 @@ impl WasmTypes {
             Type::Int => ir::ValType::I64,
             Type::Float => ir::ValType::F64,
             Type::Bool => ir::ValType::I32,
+            Type::Byte => ir::ValType::I32,
             Type::Array { .. } | Type::Reference { .. } => ir::ValType::Ref(self.type_idx(ty)),
             _ => panic!("Type does not have equivalent Wasm value type"),
         }

@@ -224,13 +224,13 @@ Call expressions only work with a `Variable` callee at the compiler stage (funct
 ```rust
 struct TypeRef { node: Node, name: Identifier, args: Vec<TypeRef> }   // in AST (syntax) — unresolved type name + generic args
 enum Type {                                                          // in semantic (runtime)
-    Unit, Int, Float, Bool, Never,
+    Unit, Int, Float, Bool, Byte, Never,
     Array { ty: Rc<Type> },
     Function { params: Rc<[Type]>, ret: Rc<Type> },
 }
 ```
 
-**Type names are resolved during semantic analysis, not parsing.** A `TypeRef` is the raw identifier the user wrote (e.g. `Int`) plus any bracketed generic arguments (e.g. `Array[Int]` → name `Array`, args `[Int]`), captured verbatim by `Parser::type_ref` — the parser accepts *any* identifier as a type, parses optional `[...]` arguments, and does no validation. `Resolver::ty_ref(&TypeRef) -> Result<Type>` maps the name to a `Type`, accepting `Int`, `Float`, `Bool`, `Unit`, `Never`, and `Array[T]` (exactly one argument, resolved recursively); any other name is a **Resolve error** (`"Unknown type"`), and a malformed `Array` (zero or more than one argument) is `"Invalid array type"`, reported at the type's span. This is why "unknown type"/"invalid array type" tests live in `semantic/test.rs`, not `parser/test.rs`. All annotation sites (function params and return type in `Resolver::module`/`function`, and `let` declarations in `Resolver::stmt`) go through `ty_ref`. There is no `TypeRef::lower`; that mapping now lives in `ty_ref`.
+**Type names are resolved during semantic analysis, not parsing.** A `TypeRef` is the raw identifier the user wrote (e.g. `Int`) plus any bracketed generic arguments (e.g. `Array[Int]` → name `Array`, args `[Int]`), captured verbatim by `Parser::type_ref` — the parser accepts *any* identifier as a type, parses optional `[...]` arguments, and does no validation. `Resolver::ty_ref(&TypeRef) -> Result<Type>` maps the name to a `Type`, accepting `Int`, `Float`, `Bool`, `Byte`, `Unit`, `Never`, and `Array[T]` (exactly one argument, resolved recursively); any other name is a **Resolve error** (`"Unknown type"`), and a malformed `Array` (zero or more than one argument) is `"Invalid array type"`, reported at the type's span. This is why "unknown type"/"invalid array type" tests live in `semantic/test.rs`, not `parser/test.rs`. All annotation sites (function params and return type in `Resolver::module`/`function`, and `let` declarations in `Resolver::stmt`) go through `ty_ref`. There is no `TypeRef::lower`; that mapping now lives in `ty_ref`.
 
 `Unit` is the type of functions with no return type annotation. It has no literal and cannot be stored in a variable, though it may now be written explicitly as a type name. `Never` is the bottom type of diverging expressions (`return`/`break`/`continue`); it has no literal, no Wasm representation, and is compatible with every type (see "The `Never` type" above).
 
@@ -241,10 +241,11 @@ enum Type {                                                          // in seman
 | `Int`        | `i64`                                           |
 | `Float`      | `f64`                                           |
 | `Bool`       | `i32`                                           |
+| `Byte`       | `i32` (unsigned, 0–255)                         |
 | `Unit`       | (no result)                                     |
 | `Array[T]`   | `(ref null $a)` where `$a = (array (mut T'))`   |
 
-Arrays are Wasm GC arrays: each distinct `Array[T]` adds an `(array (mut T'))` entry to the type section (where `T'` is the lowered element `ValType`), and array *values* are nullable references to that type. The runtime is configured with `wasm_gc(true)` and `wasm_function_references(true)` (see `emit::run` and the `emit`/test harness).
+Arrays are Wasm GC arrays: each distinct `Array[T]` adds an `(array (mut T'))` entry to the type section (where `T'` is the lowered element `ValType`), and array *values* are nullable references to that type. `Array[Byte]` is the one *packed* array: it lowers to `(array (mut i8))`, element reads use `array.get_u` (plain `array.get` is invalid on packed arrays, and `Byte` is unsigned), and `Byte` comparisons compile to the unsigned `i32` comparison instructions. An integer literal types as `Byte` (compiling to `i32.const`) when its expected type is `Byte`, with a compile-time 0–255 range check; there are no other implicit `Int`↔`Byte` conversions. The runtime is configured with `wasm_gc(true)` and `wasm_function_references(true)` (see `emit::run` and the `emit`/test harness).
 
 ---
 

@@ -1398,3 +1398,119 @@ fn error_unknown_struct_type_in_param() {
            ^^^^^^^^^^^ ─── Unknown type `Nonexistent`
     ");
 }
+
+// ── Byte ─────────────────────────────────────────────────────────────────────
+
+#[test]
+fn valid_byte_declaration_from_literal() {
+    // An integer literal types as `Byte` when the expected type is `Byte`.
+    assert_snapshot!(check("fn f() { let b Byte = 65 }"), @"<no error>");
+}
+
+#[test]
+fn valid_byte_literal_range_limits() {
+    assert_snapshot!(check("fn f() { let lo Byte = 0; let hi Byte = 255 }"), @"<no error>");
+}
+
+#[test]
+fn valid_byte_param_return_and_call_with_literal() {
+    // Call arguments are an expected-type site, so a literal argument for a
+    // `Byte` parameter infers `Byte`.
+    let src = r#"
+        fn id(b Byte) Byte { return b }
+        fn f() Byte { return id(200) }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn valid_byte_comparisons() {
+    let src = r#"
+        fn f(a Byte, b Byte) Bool {
+            return a == b or a != b or a < b or a <= b or a > b or a >= b
+        }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn valid_byte_array_read_write() {
+    let src = r#"
+        fn f() Byte {
+            let xs Array[Byte] = [72, 105]
+            xs[0] = 255
+            return xs[1]
+        }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn valid_byte_struct_field() {
+    let src = "struct Pixel { r Byte; g Byte } fn f(p Pixel) Byte { return p.r }";
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn error_byte_literal_out_of_range() {
+    assert_snapshot!(check("fn f() { let b Byte = 256 }"), @"
+    fn f() { let b Byte = 256 }
+                          ^^^ ─── Integer literal '256' is out of range for 'Byte' (0 to 255)
+    ");
+}
+
+#[test]
+fn error_byte_arithmetic() {
+    // TODO: Byte has no arithmetic;
+    assert_snapshot!(check("fn f(a Byte, b Byte) Byte { return a + b }"), @"
+    fn f(a Byte, b Byte) Byte { return a + b }
+                                       ^ ─── Operator requires numeric type
+    ");
+}
+
+#[test]
+fn error_byte_negation() {
+    // TODO
+    assert_snapshot!(check("fn f(b Byte) Byte { return -b }"), @"
+    fn f(b Byte) Byte { return -b }
+                                ^ ─── Operator requires numeric type
+    ");
+}
+
+#[test]
+fn error_byte_modulo() {
+    // TODO
+    assert_snapshot!(check("fn f(a Byte, b Byte) Byte { return a % b }"), @"
+    fn f(a Byte, b Byte) Byte { return a % b }
+                                       ^^^^^ ─── Modulo operator is not implemented for Byte
+    ");
+}
+
+#[test]
+fn error_int_variable_assigned_to_byte() {
+    // Only literals infer Byte; an Int variable never implicitly converts.
+    assert_snapshot!(check("fn f() { let x Int = 1; let b Byte = x }"), @"
+    fn f() { let x Int = 1; let b Byte = x }
+                                         ^ ─── Type mismatch: expected 'Byte', found 'Int'
+    ");
+}
+
+#[test]
+fn error_byte_compared_to_int_literal() {
+    // Operands of a binary operator are checked without an expected type, so
+    // the literal stays Int and does not unify with Byte.
+    assert_snapshot!(check("fn f(b Byte) Bool { return b == 65 }"), @"
+    fn f(b Byte) Bool { return b == 65 }
+                                    ^^ ─── Type mismatch: expected 'Byte', found 'Int'
+    ");
+}
+
+#[test]
+fn error_negative_byte_literal() {
+    // `-1` is unary negation of the literal `1`, which types as Int (negation
+    // is not part of the literal), so it cannot initialize a Byte.
+    assert_snapshot!(check("fn f() { let b Byte = -1 }"), @"
+    fn f() { let b Byte = -1 }
+                          ^^ ─── Type mismatch: expected 'Byte', found 'Int'
+    ");
+}

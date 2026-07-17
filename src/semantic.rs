@@ -33,6 +33,7 @@ pub enum Type {
     Int,
     Float,
     Bool,
+    Byte,
     Never,
     Array {
         ty: Rc<Type>,
@@ -66,6 +67,9 @@ impl Type {
     pub fn is_bool(&self) -> bool {
         matches!(self, Type::Bool)
     }
+    pub fn is_byte(&self) -> bool {
+        matches!(self, Type::Byte)
+    }
     pub fn is_unit(&self) -> bool {
         matches!(self, Type::Unit)
     }
@@ -81,6 +85,7 @@ impl Display for Type {
             Type::Int => write!(f, "Int"),
             Type::Float => write!(f, "Float"),
             Type::Bool => write!(f, "Bool"),
+            Type::Byte => write!(f, "Byte"),
             Type::Never => write!(f, "Never"),
             Type::Array { ty } => write!(f, "Array[{ty}]"),
             Type::Reference { name } => write!(f, "{name}",),
@@ -287,6 +292,15 @@ impl Resolver {
     ) -> Result<Type> {
         let ty = match &expr.kind {
             ExprKind::Literal { kind } => match kind {
+                LiteralKind::Int(value) if matches!(expected_ty, Some(Type::Byte)) => {
+                    if *value > 255 {
+                        return type_err(
+                            expr.node.span,
+                            format!("Integer literal '{value}' is out of range for 'Byte' (0 to 255)"),
+                        );
+                    }
+                    Type::Byte
+                }
                 LiteralKind::Int(_) => Type::Int,
                 LiteralKind::Float(_) => Type::Float,
                 LiteralKind::Bool(_) => Type::Bool,
@@ -427,7 +441,7 @@ impl Resolver {
                     BinOpKind::Eq | BinOpKind::Ne => Type::Bool,
 
                     BinOpKind::Ge | BinOpKind::Gt | BinOpKind::Le | BinOpKind::Lt => {
-                        if !left_ty.is_numeric() {
+                        if !left_ty.is_numeric() && !left_ty.is_byte() {
                             return type_err(
                                 left.node.span,
                                 "Operator requires numeric type".to_string(),
@@ -715,6 +729,7 @@ impl Resolver {
             "Int" => Ok(Type::Int),
             "Float" => Ok(Type::Float),
             "Bool" => Ok(Type::Bool),
+            "Byte" => Ok(Type::Byte),
             "Unit" => Ok(Type::Unit),
             "Never" => Ok(Type::Never),
             "Array" => match type_ref.args.as_slice() {
