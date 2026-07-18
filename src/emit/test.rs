@@ -42,6 +42,22 @@ pub fn run_to_stdout(binary: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error
         },
     )?;
 
+    let out_string = Arc::clone(&out);
+    linker.func_wrap(
+        "js",
+        "print_string",
+        move |mut caller: wasmtime::Caller<'_, ()>,
+              s: Option<wasmtime::Rooted<wasmtime::ArrayRef>>| {
+            let bytes = emit::string_bytes(&mut caller, s);
+            writeln!(
+                out_string.lock().unwrap(),
+                "{}",
+                String::from_utf8_lossy(&bytes)
+            )
+            .unwrap();
+        },
+    )?;
+
     let instance = linker.instantiate(&mut store, &module)?;
     let main = instance.get_typed_func::<(), ()>(&mut store, "main")?;
     main.call(&mut store, ())?;
@@ -70,6 +86,7 @@ fn run_main(body: &str) -> String {
     src.push_str("import fn print_int(x Int)\n");
     src.push_str("import fn print_float(x Float)\n");
     src.push_str("import fn print_bool(x Bool)\n");
+    src.push_str("import fn print_string(x String)\n");
     src.push_str("export fn main() {\n");
     src.push_str(body);
     src.push_str("}\n");
@@ -1374,4 +1391,94 @@ fn builtin_float_to_int_traps_out_of_range() {
 #[test]
 fn builtin_int_div_u_traps_on_zero() {
     assert_snapshot!(run_main_trap("int_div_u(1, 0)"), @"wasm trap: integer divide by zero");
+}
+
+// ── Strings ──────────────────────────────────────────────────────────────────
+
+#[test]
+fn print_string_literal() {
+    assert_snapshot!(run_main(r#"print_string("hello")"#), @"hello");
+}
+
+#[test]
+fn print_string_escapes() {
+    let src = r#"
+        print_string("line1\nline2")
+        print_string("say \"hi\"")
+        print_string("a\tb")
+    "#;
+    assert_snapshot!(run_main(src), @r#"
+    line1
+    line2
+    say "hi"
+    a	b
+    "#);
+}
+
+#[test]
+fn print_string_unicode() {
+    // Multibyte UTF-8 (2, 3 and 4 byte scalars) survives the byte-array
+    // round trip, including \u{...} escapes.
+    let src = r#"
+        print_string("héllo €")
+        print_string("\u{1F600}")
+    "#;
+    assert_snapshot!(run_main(src), @"
+    héllo €
+    😀
+    ");
+}
+
+#[test]
+fn print_empty_string() {
+    let src = r#"
+        print_string("a")
+        print_string("")
+        print_string("b")
+    "#;
+    assert_snapshot!(run_main(src), @"
+    a
+
+    b
+    ");
+}
+
+#[test]
+fn string_through_function_and_variable() {
+    // A String flows through returns, locals and params; printing twice
+    // shows the same reference is reusable.
+    let src = r#"
+        import fn print_string(s String)
+        fn greet(name String) String { return "yo" }
+        export fn main() {
+            let s String = greet("Luffy")
+            print_string(s)
+            print_string(s)
+        }
+    "#;
+    assert_snapshot!(compile_and_run(src), @"
+    yo
+    yo
+    ");
+}
+
+#[test]
+fn string_in_struct_field_and_array() {
+    let src = r#"
+        import fn print_string(s String)
+        struct Named { name String }
+        export fn main() {
+            let xs Array[String] = ["a", "b"]
+            print_string(xs[1])
+            let n Named = { name = "Zoro" }
+            print_string(n.name)
+            n.name = "Nami"
+            print_string(n.name)
+        }
+    "#;
+    assert_snapshot!(compile_and_run(src), @"
+    b
+    Zoro
+    Nami
+    ");
 }

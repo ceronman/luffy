@@ -37,6 +37,10 @@ pub enum ValType {
     F64,
     I32,
     Ref(TypeIdx),
+    /// The abstract `(ref null array)` type, supertype of every concrete
+    /// array type. Used in host import signatures, which cannot name
+    /// concrete types.
+    ArrayRef,
 }
 
 #[derive(Clone)]

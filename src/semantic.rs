@@ -35,6 +35,7 @@ pub enum Type {
     Float,
     Bool,
     Byte,
+    String,
     Never,
     Array {
         ty: Rc<Type>,
@@ -87,6 +88,7 @@ impl Display for Type {
             Type::Float => write!(f, "Float"),
             Type::Bool => write!(f, "Bool"),
             Type::Byte => write!(f, "Byte"),
+            Type::String => write!(f, "String"),
             Type::Never => write!(f, "Never"),
             Type::Array { ty } => write!(f, "Array[{ty}]"),
             Type::Reference { name } => write!(f, "{name}",),
@@ -356,11 +358,19 @@ impl Resolver {
                 LiteralKind::Int(_) => Type::Int,
                 LiteralKind::Float(_) => Type::Float,
                 LiteralKind::Bool(_) => Type::Bool,
-                LiteralKind::Str(_) => {
-                    return type_err(
-                        expr.node.span,
-                        "string literals are not supported yet".to_string(),
-                    );
+                LiteralKind::Str(value) => {
+                    // TODO: Research a better way to store data strings
+                    // Literals lower to `array.new_fixed`, which the Wasm spec caps at 10 000 operands;
+                    if value.len() > 10_000 {
+                        return type_err(
+                            expr.node.span,
+                            format!(
+                                "String literal is too long: {} bytes (the maximum is 10000)",
+                                value.len()
+                            ),
+                        );
+                    }
+                    Type::String
                 }
             },
             ExprKind::Variable { name } => {
@@ -490,7 +500,19 @@ impl Resolver {
                         result_ty
                     }
 
-                    BinOpKind::Eq | BinOpKind::Ne => Type::Bool,
+                    BinOpKind::Eq | BinOpKind::Ne => {
+                        let comparable = result_ty.is_numeric()
+                            || result_ty.is_bool()
+                            || result_ty.is_byte()
+                            || result_ty.is_never();
+                        if !comparable {
+                            return type_err(
+                                expr.node.span,
+                                format!("Equality operators are not supported for '{result_ty}'"),
+                            );
+                        }
+                        Type::Bool
+                    }
 
                     BinOpKind::Ge | BinOpKind::Gt | BinOpKind::Le | BinOpKind::Lt => {
                         if !left_ty.is_numeric() && !left_ty.is_byte() {
@@ -782,6 +804,7 @@ impl Resolver {
             "Float" => Ok(Type::Float),
             "Bool" => Ok(Type::Bool),
             "Byte" => Ok(Type::Byte),
+            "String" => Ok(Type::String),
             "Unit" => Ok(Type::Unit),
             "Never" => Ok(Type::Never),
             "Array" => match type_ref.args.as_slice() {

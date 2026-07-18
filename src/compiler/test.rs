@@ -1494,3 +1494,65 @@ fn float_builtin_and_conversion_instructions() {
     )
     ");
 }
+
+// ── Strings ──────────────────────────────────────────────────────────────────
+
+#[test]
+fn string_literal_lowering() {
+    // A string literal materializes as one i32.const per UTF-8 byte plus
+    // array.new_fixed of the shared `(array (mut i8))` type.
+    assert_snapshot!(compile_to_wat(r#"fn hello() String { return "Hi" }"#), @"
+    (module
+      (type (;0;) (array (mut i8)))
+      (type (;1;) (func (result (ref null 0))))
+      (func (;0;) (type 1) (result (ref null 0))
+        i32.const 72
+        i32.const 105
+        array.new_fixed 0 2
+        return
+      )
+    )
+    ");
+}
+
+#[test]
+fn string_and_byte_array_share_wasm_type() {
+    // String and Array[Byte] lower to the same canonical Wasm type; only one
+    // `(array (mut i8))` entry appears in the type section.
+    assert_snapshot!(compile_to_wat("fn f(s String, b Array[Byte]) String { return s }"), @"
+    (module
+      (type (;0;) (array (mut i8)))
+      (type (;1;) (func (param (ref null 0) (ref null 0)) (result (ref null 0))))
+      (func (;0;) (type 1) (param (ref null 0) (ref null 0)) (result (ref null 0))
+        local.get 0
+        return
+      )
+    )
+    ");
+}
+
+#[test]
+fn print_string_import_uses_abstract_arrayref() {
+    // Host imports cannot name concrete GC types and Wasm function-type
+    // subtyping is nominal, so an import with a String param is declared over
+    // the abstract `arrayref` type; the call site passes the concrete array
+    // (a valid subtype).
+    let src = r#"
+        import fn print_string(s String)
+        export fn main() { print_string("A") }
+    "#;
+    assert_snapshot!(compile_to_wat(src), @r#"
+    (module
+      (type (;0;) (func (param arrayref)))
+      (type (;1;) (func))
+      (type (;2;) (array (mut i8)))
+      (import "js" "print_string" (func (;0;) (type 0)))
+      (export "main" (func 1))
+      (func (;1;) (type 1)
+        i32.const 65
+        array.new_fixed 2 1
+        call 0
+      )
+    )
+    "#);
+}

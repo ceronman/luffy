@@ -1151,11 +1151,14 @@ fn error_over_indexing_past_element_type() {
     ");
 }
 
-// TODO ── Known gap: equality on arrays type-checks but is not lowered ───────────────
-
 #[test]
-fn array_equality_is_accepted_by_typechecker() {
-    assert_snapshot!(check("fn f(a Array[Int], b Array[Int]) Bool: a == b"), @"<no error>");
+fn error_array_equality_not_supported() {
+    // Equality used to type-check for arrays and then panic in codegen; it
+    // is now rejected here.
+    assert_snapshot!(check("fn f(a Array[Int], b Array[Int]) Bool: a == b"), @"
+    fn f(a Array[Int], b Array[Int]) Bool: a == b
+                                           ^^^^^^ ─── Equality operators are not supported for 'Array[Int]'
+    ");
 }
 
 // ── Structs: valid programs ───────────────────────────────────────────────────
@@ -1586,4 +1589,110 @@ fn error_builtin_wrong_arity() {
     fn f() Float { return float_sqrt(1.0, 2.0) }
                           ^^^^^^^^^^ ─── Invalid function call: too many arguments
     ");
+}
+
+// ── Strings ──────────────────────────────────────────────────────────────────
+
+#[test]
+fn valid_string_literal_declaration() {
+    assert_snapshot!(check(r#"fn f() { let s String = "hello" }"#), @"<no error>");
+}
+
+#[test]
+fn valid_empty_string_literal() {
+    assert_snapshot!(check(r#"fn f() { let s String = "" }"#), @"<no error>");
+}
+
+#[test]
+fn valid_string_param_and_return() {
+    assert_snapshot!(check(r#"fn id(s String) String { return s }"#), @"<no error>");
+}
+
+#[test]
+fn valid_string_in_struct_and_array() {
+    let src = r#"
+        struct Named { name String }
+        fn f() String {
+            let xs Array[String] = ["a", "b"]
+            let n Named = { name = "Zoro" }
+            return xs[0]
+        }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn error_string_equality_not_supported() {
+    assert_snapshot!(check("fn f(a String, b String) Bool: a == b"), @"
+    fn f(a String, b String) Bool: a == b
+                                   ^^^^^^ ─── Equality operators are not supported for 'String'
+    ");
+}
+
+#[test]
+fn error_struct_equality_not_supported() {
+    assert_snapshot!(check("struct P { x Int } fn f(a P, b P) Bool: a == b"), @"
+    struct P { x Int } fn f(a P, b P) Bool: a == b
+                                            ^^^^^^ ─── Equality operators are not supported for 'P'
+    ");
+}
+
+#[test]
+fn error_string_concatenation_with_plus() {
+    assert_snapshot!(check("fn f(a String, b String) String: a + b"), @"
+    fn f(a String, b String) String: a + b
+                                     ^ ─── Operator requires numeric type
+    ");
+}
+
+#[test]
+fn error_string_ordering_comparison() {
+    assert_snapshot!(check("fn f(a String, b String) Bool: a < b"), @"
+    fn f(a String, b String) Bool: a < b
+                                   ^ ─── Operator requires numeric type
+    ");
+}
+
+#[test]
+fn error_string_indexing() {
+    // Strings are not arrays: indexing is rejected, which also rules out
+    // index assignment — the immutability story needs no extra checks.
+    assert_snapshot!(check("fn f(s String) Byte: s[0]"), @"
+    fn f(s String) Byte: s[0]
+                         ^ ─── Type mismatch: expected Array, found 'String'
+    ");
+}
+
+#[test]
+fn error_string_index_assignment() {
+    assert_snapshot!(check("fn f(s String) { s[0] = 65 }"), @"
+    fn f(s String) { s[0] = 65 }
+                     ^ ─── Type mismatch: expected Array, found 'String'
+    ");
+}
+
+#[test]
+fn error_int_assigned_to_string() {
+    assert_snapshot!(check("fn f() { let s String = 1 }"), @"
+    fn f() { let s String = 1 }
+                            ^ ─── Type mismatch: expected 'String', found 'Int'
+    ");
+}
+
+#[test]
+fn error_string_literal_too_long() {
+    // Literals lower to array.new_fixed, capped at 10 000 operands; the
+    // 10 001-byte source line would bloat a snapshot, so assert directly.
+    let src = format!(r#"fn f() {{ let s String = "{}" }}"#, "a".repeat(10_001));
+    let out = check(&src);
+    assert!(
+        out.contains("String literal is too long: 10001 bytes (the maximum is 10000)"),
+        "unexpected output: {out}"
+    );
+}
+
+#[test]
+fn valid_string_literal_at_max_length() {
+    let src = format!(r#"fn f() {{ let s String = "{}" }}"#, "a".repeat(10_000));
+    assert_eq!(check(&src), "<no error>");
 }

@@ -55,7 +55,7 @@ impl Compiler {
         for declaration in &self.semantics.declarations {
             if let DeclarationKind::Import = &declaration.kind {
                 let func_idx = self.func_addresses.len() as ir::FuncIdx;
-                let ty_idx = self.wasm_types.type_idx(&declaration.ty);
+                let ty_idx = self.wasm_types.import_type_idx(&declaration.ty);
                 self.func_addresses.insert(
                     declaration.id,
                     FuncAddress {
@@ -244,10 +244,19 @@ impl Compiler {
                 }
                 ast::LiteralKind::Float(value) => ins.push(ir::Instruction::F64Const(*value)),
                 ast::LiteralKind::Bool(value) => ins.push(ir::Instruction::I32Const(*value as i32)),
-                // Semantic analysis rejects `Str` literals before compilation
-                // is reached (there is no `Str` type yet), so this is
-                // unreachable for now. Wasm codegen for strings is future work.
-                ast::LiteralKind::Str(_) => unimplemented!("string literals are not compiled yet"),
+                ast::LiteralKind::Str(value) => {
+                    let ty = self.node_type(expr.node);
+                    let type_idx = self.wasm_types.type_idx(&ty);
+                    // One i32.const per UTF-8 byte; semantic analysis caps
+                    // literals at 10 000 bytes (the array.new_fixed limit).
+                    for byte in value.bytes() {
+                        ins.push(ir::Instruction::I32Const(byte as i32));
+                    }
+                    ins.push(ir::Instruction::ArrayNewFixed {
+                        type_idx,
+                        len: value.len() as u32,
+                    });
+                }
             },
             ast::ExprKind::Variable { name } => {
                 let address = self.local_addr(name);
@@ -346,6 +355,9 @@ impl Compiler {
                     (ast::BinOpKind::Gt, Type::Int) => ins.push(ir::Instruction::I64GtS),
                     (ast::BinOpKind::Le, Type::Int) => ins.push(ir::Instruction::I64LeS),
                     (ast::BinOpKind::Lt, Type::Int) => ins.push(ir::Instruction::I64LtS),
+
+                    (ast::BinOpKind::Eq, Type::Bool) => ins.push(ir::Instruction::I32Eq),
+                    (ast::BinOpKind::Ne, Type::Bool) => ins.push(ir::Instruction::I32Ne),
 
                     // `Byte` is i32 at runtime and unsigned, so comparisons
                     // use the unsigned i32 instructions.
@@ -624,7 +636,9 @@ fn is_byte_array(ty: &Type) -> bool {
 struct WasmTypes {
     semantics: Rc<Semantics>,
     unique_types: HashMap<Type, ir::TypeIdx>,
+    import_types: HashMap<Type, ir::TypeIdx>,
     groups: Vec<ir::RecGroup>,
+    next_idx: ir::TypeIdx,
 }
 
 impl WasmTypes {
@@ -632,7 +646,9 @@ impl WasmTypes {
         Self {
             semantics,
             unique_types: HashMap::new(),
+            import_types: HashMap::new(),
             groups: vec![],
+            next_idx: 0,
         }
     }
 
@@ -658,7 +674,8 @@ impl WasmTypes {
             // Reserve indices for the whole group up front so that mutually
             // recursive members can refer to each other while being lowered.
             for member in &scc {
-                let idx = self.unique_types.len() as ir::TypeIdx;
+                let idx = self.next_idx;
+                self.next_idx += 1;
                 self.unique_types.insert(member.clone(), idx);
             }
             let types = scc.iter().map(|member| self.lower(member)).collect();
@@ -666,6 +683,51 @@ impl WasmTypes {
         }
 
         self.unique_types[&ty]
+    }
+
+    /// Returns the Wasm type index for an imported (host) function's
+    /// signature. `String` params and returns are lowered to the abstract
+    /// `arrayref` type instead of the concrete byte-array type: a typed host
+    /// function can only be declared over abstract GC types, and Wasm
+    /// function-type subtyping is nominal, so the import's declared type must
+    /// match the host's exactly. Call sites stay valid because a concrete
+    /// array is a subtype of `arrayref`.
+    ///
+    /// Signatures without `String` share the ordinary `type_idx` entry.
+    fn import_type_idx(&mut self, ty: &Type) -> ir::TypeIdx {
+        let Type::Function { params, ret } = ty else {
+            panic!("Import type is not a function");
+        };
+        let involves_string = params
+            .iter()
+            .chain(std::iter::once(ret.as_ref()))
+            .any(|t| matches!(t, Type::String));
+        if !involves_string {
+            return self.type_idx(ty);
+        }
+        if let Some(idx) = self.import_types.get(ty) {
+            return *idx;
+        }
+
+        let params = params
+            .iter()
+            .map(|p| match p {
+                Type::String => ir::ValType::ArrayRef,
+                other => self.val_ty(other),
+            })
+            .collect();
+        let results = match ret.as_ref() {
+            Type::Unit => vec![],
+            Type::String => vec![ir::ValType::ArrayRef],
+            other => vec![self.val_ty(other)],
+        };
+        let idx = self.next_idx;
+        self.next_idx += 1;
+        self.groups.push(ir::RecGroup {
+            types: vec![ir::Type::Function { params, results }],
+        });
+        self.import_types.insert(ty.clone(), idx);
+        idx
     }
 
     /// Lowers a canonical heap type to its Wasm definition. Every heap type
@@ -709,6 +771,9 @@ impl WasmTypes {
     fn heap_type(&self, ty: &Type) -> Option<Type> {
         match ty {
             Type::Array { .. } => Some(ty.clone()),
+            Type::String => Some(Type::Array {
+                ty: Rc::new(Type::Byte),
+            }),
             Type::Reference { name } => {
                 let struct_ty = self
                     .semantics
@@ -746,7 +811,9 @@ impl WasmTypes {
             Type::Float => ir::ValType::F64,
             Type::Bool => ir::ValType::I32,
             Type::Byte => ir::ValType::I32,
-            Type::Array { .. } | Type::Reference { .. } => ir::ValType::Ref(self.type_idx(ty)),
+            Type::Array { .. } | Type::Reference { .. } | Type::String => {
+                ir::ValType::Ref(self.type_idx(ty))
+            }
             _ => panic!("Type does not have equivalent Wasm value type"),
         }
     }

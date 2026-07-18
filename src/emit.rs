@@ -102,6 +102,7 @@ impl ir::ValType {
                 nullable: true,
                 heap_type: HeapType::Concrete(*idx),
             }),
+            ir::ValType::ArrayRef => ValType::Ref(RefType::ARRAYREF),
         }
     }
 }
@@ -229,6 +230,23 @@ impl ir::Instruction {
     }
 }
 
+/// Reads the UTF-8 bytes of a Luffy `String` — an `(array (mut i8))` GC
+/// reference — from the host side. `elems` zero-extends the i8 elements into
+/// `Val::I32`, so byte recovery is exact.
+pub fn string_bytes(
+    caller: &mut wasmtime::Caller<'_, ()>,
+    s: Option<wasmtime::Rooted<wasmtime::ArrayRef>>,
+) -> Vec<u8> {
+    let s = s.expect("null String");
+    s.elems(caller)
+        .expect("unrooted String reference")
+        .map(|v| match v {
+            wasmtime::Val::I32(b) => b as u8,
+            _ => unreachable!("String element is not an i8"),
+        })
+        .collect()
+}
+
 pub fn run(binary: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
     let mut config = wasmtime::Config::new();
     config.wasm_gc(true);
@@ -260,6 +278,15 @@ pub fn run(binary: &[u8]) -> Result<(), Box<dyn std::error::Error>> {
         |_caller: wasmtime::Caller<'_, ()>, i: i32| {
             let i = i != 0;
             println!("{i}");
+        },
+    )?;
+
+    linker.func_wrap(
+        "js",
+        "print_string",
+        |mut caller: wasmtime::Caller<'_, ()>, s: Option<wasmtime::Rooted<wasmtime::ArrayRef>>| {
+            let bytes = string_bytes(&mut caller, s);
+            println!("{}", String::from_utf8_lossy(&bytes));
         },
     )?;
 

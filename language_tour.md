@@ -43,7 +43,7 @@ let x Color = 1   // error: Unknown type
 
 Besides the three primitives, two further types have names you can write but no literal values: `Unit` (the "no value" type of functions that return nothing) and `Never` (the type of expressions like `return` that never produce a value — see the section on `return` below).
 
-Luffy also has one compound type, `Array[T]`, a fixed-size array of elements of type `T`. It is covered in the [Arrays](#arrays) section below.
+Luffy also has a compound type, `Array[T]`, a fixed-size array of elements of type `T`, and a `String` type for immutable UTF-8 text. They are covered in the [Arrays](#arrays) and [Strings](#strings) sections below.
 
 ### Integer literals
 
@@ -564,6 +564,45 @@ let also_ok Bool = b == int_to_byte(65)
 `Byte` converts to and from `Int` with the builtins `byte_to_int(b)` (always succeeds) and `int_to_byte(n)` (traps at runtime unless `n` is in 0–255) — see [Builtin functions](#builtin-functions).
 
 `Array[Byte]` is stored *packed*: each element occupies a single byte on the heap, unlike `Array[Int]` whose elements are eight bytes each. This is invisible in the language — indexing, assignment, and bounds behavior work like any other array.
+
+---
+
+## Strings
+
+`String` is an **immutable** sequence of UTF-8 bytes. String literals are written in double quotes and may contain any Unicode text:
+
+```luffy
+import fn print_string(s String)
+
+export fn main() {
+    let name String = "Luffy"
+    print_string("Hello, world")
+    print_string(name)
+    print_string("héllo 😀")     // stored as UTF-8 bytes
+}
+```
+
+### Escape sequences
+
+| Escape | Meaning |
+|--------|---------|
+| `\0`   | null |
+| `\\`   | backslash |
+| `\t`   | tab |
+| `\n`   | newline |
+| `\r`   | carriage return |
+| `\"`   | double quote |
+| `\'`   | single quote |
+| `\u{...}` | Unicode scalar value, 1–8 hex digits (e.g. `\u{1F600}` is 😀) |
+
+### Properties
+
+- **Immutable.** No operation modifies a string; anything that looks like a change produces a new string. Consequently, the reference semantics that arrays and structs have is unobservable for strings.
+- **Not an array.** `s[i]` is a type error — indexing would have to choose between bytes and characters, and neither is an obvious default. Byte-level access arrives with the string builtin functions in a coming phase.
+- **No operators yet.** `==` on strings is rejected ("Equality operators are not supported"), and `+` does not concatenate. Content equality, length, concatenation, and slicing arrive as builtin functions (`string_eq`, `string_len`, `string_concat`, `string_slice`) in a coming phase.
+- Strings work everywhere values do: parameters, returns, `Array[String]`, and struct fields.
+- Printing is a host import, like the other `print_*` functions: `import fn print_string(s String)`. Invalid UTF-8 cannot be produced today (literals come from validated source text); if it ever is, printing replaces bad sequences with `U+FFFD`.
+- A string literal is currently limited to 10 000 bytes; the limit disappears with data segments in the next phase.
 
 ---
 
