@@ -1680,19 +1680,9 @@ fn error_int_assigned_to_string() {
 }
 
 #[test]
-fn error_string_literal_too_long() {
-    // Literals lower to array.new_fixed, capped at 10 000 operands; the
-    // 10 001-byte source line would bloat a snapshot, so assert directly.
-    let src = format!(r#"fn f() {{ let s String = "{}" }}"#, "a".repeat(10_001));
-    let out = check(&src);
-    assert!(
-        out.contains("String literal is too long: 10001 bytes (the maximum is 10000)"),
-        "unexpected output: {out}"
-    );
-}
-
-#[test]
-fn valid_string_literal_at_max_length() {
-    let src = format!(r#"fn f() {{ let s String = "{}" }}"#, "a".repeat(10_000));
+fn valid_long_string_literal() {
+    // Literals lower to data segments, so there is no length limit (the old
+    // array.new_fixed lowering capped them at 10 000 bytes).
+    let src = format!(r#"fn f() {{ let s String = "{}" }}"#, "a".repeat(100_000));
     assert_eq!(check(&src), "<no error>");
 }

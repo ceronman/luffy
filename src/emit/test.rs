@@ -1482,3 +1482,20 @@ fn string_in_struct_field_and_array() {
     Nami
     ");
 }
+
+#[test]
+fn long_string_literal_runs() {
+    // Data segments lift the old 10 000-byte array.new_fixed limit; a 50 000
+    // byte literal compiles, instantiates, and allocates at runtime.
+    let long = "a".repeat(50_000);
+    let src = format!(
+        r#"
+        import fn print_bool(x Bool)
+        export fn main() {{
+            let s String = "{long}"
+            print_bool(true)
+        }}
+        "#
+    );
+    assert_eq!(compile_and_run(&src), "true\n");
+}

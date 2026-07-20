@@ -358,20 +358,7 @@ impl Resolver {
                 LiteralKind::Int(_) => Type::Int,
                 LiteralKind::Float(_) => Type::Float,
                 LiteralKind::Bool(_) => Type::Bool,
-                LiteralKind::Str(value) => {
-                    // TODO: Research a better way to store data strings
-                    // Literals lower to `array.new_fixed`, which the Wasm spec caps at 10 000 operands;
-                    if value.len() > 10_000 {
-                        return type_err(
-                            expr.node.span,
-                            format!(
-                                "String literal is too long: {} bytes (the maximum is 10000)",
-                                value.len()
-                            ),
-                        );
-                    }
-                    Type::String
-                }
+                LiteralKind::Str(_) => Type::String,
             },
             ExprKind::Variable { name } => {
                 let decl_id = self.lookup(name)?;

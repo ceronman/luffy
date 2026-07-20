@@ -17,8 +17,13 @@ struct Compiler {
 
     /// Index of the current function's i64 scratch local, allocated after
     /// params and user locals on first use (see `scratch_i64`).
+    // TODO: Maybe move into Types?
     scratch_i64: Option<ir::LocalIdx>,
     scratch_base: ir::LocalIdx,
+
+    /// Passive data segments for string literals, deduplicated by content.
+    data: Vec<Vec<u8>>,
+    data_indices: HashMap<String, ir::Idx>,
 }
 
 #[derive(Clone, Copy)]
@@ -117,10 +122,11 @@ impl Compiler {
             }
         }
         ir::Module {
-            types: self.wasm_types.groups.clone(),
+            types: std::mem::take(&mut self.wasm_types.groups),
             imports,
             functions,
             exports,
+            data: std::mem::take(&mut self.data),
         }
     }
 
@@ -247,15 +253,12 @@ impl Compiler {
                 ast::LiteralKind::Str(value) => {
                     let ty = self.node_type(expr.node);
                     let type_idx = self.wasm_types.type_idx(&ty);
-                    // One i32.const per UTF-8 byte; semantic analysis caps
-                    // literals at 10 000 bytes (the array.new_fixed limit).
-                    for byte in value.bytes() {
-                        ins.push(ir::Instruction::I32Const(byte as i32));
-                    }
-                    ins.push(ir::Instruction::ArrayNewFixed {
-                        type_idx,
-                        len: value.len() as u32,
-                    });
+                    let data_idx = self.string_data_idx(value);
+                    // array.new_data takes [offset, size]; each literal owns
+                    // a whole (deduplicated) segment, so the offset is 0.
+                    ins.push(ir::Instruction::I32Const(0));
+                    ins.push(ir::Instruction::I32Const(value.len() as i32));
+                    ins.push(ir::Instruction::ArrayNewData { type_idx, data_idx });
                 }
             },
             ast::ExprKind::Variable { name } => {
@@ -545,6 +548,18 @@ impl Compiler {
     /// consumes it without evaluating other expressions in between.
     fn scratch_i64(&mut self) -> ir::LocalIdx {
         *self.scratch_i64.get_or_insert(self.scratch_base)
+    }
+
+    /// The data segment holding a string literal's UTF-8 bytes, created on
+    /// first use; repeated literals share one segment.
+    fn string_data_idx(&mut self, value: &str) -> ir::Idx {
+        if let Some(idx) = self.data_indices.get(value) {
+            return *idx;
+        }
+        let idx = self.data.len() as ir::Idx;
+        self.data.push(value.as_bytes().to_vec());
+        self.data_indices.insert(value.to_string(), idx);
+        idx
     }
 
     // TODO: very similar to `block`, duplication
@@ -997,6 +1012,8 @@ pub fn compile(module: &ast::Module, semantics: Semantics) -> ir::Module {
         loops: Default::default(),
         scratch_i64: None,
         scratch_base: 0,
+        data: Vec::new(),
+        data_indices: HashMap::new(),
     };
     compiler.module(module)
 }

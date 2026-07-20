@@ -602,7 +602,7 @@ export fn main() {
 - **No operators yet.** `==` on strings is rejected ("Equality operators are not supported"), and `+` does not concatenate. Content equality, length, concatenation, and slicing arrive as builtin functions (`string_eq`, `string_len`, `string_concat`, `string_slice`) in a coming phase.
 - Strings work everywhere values do: parameters, returns, `Array[String]`, and struct fields.
 - Printing is a host import, like the other `print_*` functions: `import fn print_string(s String)`. Invalid UTF-8 cannot be produced today (literals come from validated source text); if it ever is, printing replaces bad sequences with `U+FFFD`.
-- A string literal is currently limited to 10 000 bytes; the limit disappears with data segments in the next phase.
+- String literals are stored compactly as data segments in the compiled module — duplicate literals share one segment — and have no practical length limit.
 
 ---
 

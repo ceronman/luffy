@@ -1499,20 +1499,21 @@ fn float_builtin_and_conversion_instructions() {
 
 #[test]
 fn string_literal_lowering() {
-    // A string literal materializes as one i32.const per UTF-8 byte plus
-    // array.new_fixed of the shared `(array (mut i8))` type.
-    assert_snapshot!(compile_to_wat(r#"fn hello() String { return "Hi" }"#), @"
+    // A string literal's bytes live in a passive data segment; the literal
+    // materializes with array.new_data (operands: offset 0, byte length).
+    assert_snapshot!(compile_to_wat(r#"fn hello() String { return "Hi" }"#), @r#"
     (module
       (type (;0;) (array (mut i8)))
       (type (;1;) (func (result (ref null 0))))
       (func (;0;) (type 1) (result (ref null 0))
-        i32.const 72
-        i32.const 105
-        array.new_fixed 0 2
+        i32.const 0
+        i32.const 2
+        array.new_data 0 0
         return
       )
+      (data (;0;) "Hi")
     )
-    ");
+    "#);
 }
 
 #[test]
@@ -1549,10 +1550,48 @@ fn print_string_import_uses_abstract_arrayref() {
       (import "js" "print_string" (func (;0;) (type 0)))
       (export "main" (func 1))
       (func (;1;) (type 1)
-        i32.const 65
-        array.new_fixed 2 1
+        i32.const 0
+        i32.const 1
+        array.new_data 2 0
         call 0
       )
+      (data (;0;) "A")
+    )
+    "#);
+}
+
+#[test]
+fn string_literals_are_deduplicated() {
+    // Identical literals share one data segment; distinct ones get their own.
+    let src = r#"
+        fn a() String { return "same" }
+        fn b() String { return "same" }
+        fn c() String { return "other" }
+    "#;
+    assert_snapshot!(compile_to_wat(src), @r#"
+    (module
+      (type (;0;) (array (mut i8)))
+      (type (;1;) (func (result (ref null 0))))
+      (func (;0;) (type 1) (result (ref null 0))
+        i32.const 0
+        i32.const 4
+        array.new_data 0 0
+        return
+      )
+      (func (;1;) (type 1) (result (ref null 0))
+        i32.const 0
+        i32.const 4
+        array.new_data 0 0
+        return
+      )
+      (func (;2;) (type 1) (result (ref null 0))
+        i32.const 0
+        i32.const 5
+        array.new_data 0 1
+        return
+      )
+      (data (;0;) "same")
+      (data (;1;) "other")
     )
     "#);
 }

@@ -10,6 +10,7 @@ pub struct Module {
     pub imports: Vec<Import>,
     pub functions: Vec<Function>,
     pub exports: Vec<Export>,
+    pub data: Vec<Vec<u8>>,
 }
 
 #[derive(Clone)]
@@ -149,6 +150,12 @@ pub enum Instruction {
     ArrayNewFixed {
         type_idx: TypeIdx,
         len: u32,
+    },
+    /// Fills a new array from a passive data segment; takes [offset, size]
+    /// operands (in bytes, into the segment).
+    ArrayNewData {
+        type_idx: TypeIdx,
+        data_idx: Idx,
     },
 
     StructNew(TypeIdx),

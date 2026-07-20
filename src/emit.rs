@@ -3,9 +3,10 @@ mod test;
 
 use crate::ir;
 use wasm_encoder::{
-    ArrayType, BlockType, CodeSection, CompositeInnerType, CompositeType, EntityType, ExportKind,
-    ExportSection, FieldType, FuncType, Function, FunctionSection, HeapType, ImportSection,
-    Instruction, Module, RefType, StorageType, StructType, SubType, TypeSection, ValType,
+    ArrayType, BlockType, CodeSection, CompositeInnerType, CompositeType, DataCountSection,
+    DataSection, EntityType, ExportKind, ExportSection, FieldType, FuncType, Function,
+    FunctionSection, HeapType, ImportSection, Instruction, Module, RefType, StorageType,
+    StructType, SubType, TypeSection, ValType,
 };
 
 pub fn emit(module: ir::Module) -> Vec<u8> {
@@ -53,7 +54,23 @@ pub fn emit(module: ir::Module) -> Vec<u8> {
         }
     }
     bin_module.section(&exports);
+
+    // `array.new_data` validation requires the segment count before the code
+    // section (DataCount), while the segments themselves (Data) come after
+    // it. Passive segments need no memory section.
+    if !module.data.is_empty() {
+        bin_module.section(&DataCountSection {
+            count: module.data.len() as u32,
+        });
+    }
     bin_module.section(&codes);
+    if !module.data.is_empty() {
+        let mut data = DataSection::new();
+        for segment in &module.data {
+            data.passive(segment.iter().copied());
+        }
+        bin_module.section(&data);
+    }
 
     bin_module.finish()
 }
@@ -139,6 +156,10 @@ impl ir::Instruction {
             ir::Instruction::ArrayNewFixed { type_idx, len } => Instruction::ArrayNewFixed {
                 array_type_index: *type_idx,
                 array_size: *len,
+            },
+            ir::Instruction::ArrayNewData { type_idx, data_idx } => Instruction::ArrayNewData {
+                array_type_index: *type_idx,
+                array_data_index: *data_idx,
             },
             ir::Instruction::StructNew(idx) => Instruction::StructNew(*idx),
             ir::Instruction::StructSet {
