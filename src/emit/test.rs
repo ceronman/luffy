@@ -1499,3 +1499,176 @@ fn long_string_literal_runs() {
     );
     assert_eq!(compile_and_run(&src), "true\n");
 }
+
+// ── String builtins ──────────────────────────────────────────────────────────
+
+#[test]
+fn string_len_is_byte_length() {
+    // Byte length, not character count: "héllo" is 6 bytes in UTF-8.
+    let src = r#"
+        print_int(string_len("hello"))
+        print_int(string_len("héllo"))
+        print_int(string_len(""))
+        print_int(string_len("😀"))
+    "#;
+    assert_snapshot!(run_main(src), @"
+    5
+    6
+    0
+    4
+    ");
+}
+
+#[test]
+fn string_byte_at_reads_utf8_bytes() {
+    let src = r#"
+        print_int(byte_to_int(string_byte_at("ABC", 1)))
+        print_int(byte_to_int(string_byte_at("€", 0)))
+        print_int(byte_to_int(string_byte_at("€", 2)))
+    "#;
+    assert_snapshot!(run_main(src), @"
+    66
+    226
+    172
+    ");
+}
+
+#[test]
+fn string_byte_at_traps_out_of_bounds() {
+    assert_snapshot!(
+        run_main_trap(r#"string_byte_at("a", 5)"#),
+        @"wasm trap: out of bounds array access"
+    );
+}
+
+#[test]
+fn string_eq_compares_contents() {
+    let src = r#"
+        print_bool(string_eq("hello", "hello"))
+        print_bool(string_eq("hello", "hell"))
+        print_bool(string_eq("hello", "hellO"))
+        print_bool(string_eq("", ""))
+        let s String = string_concat("he", "llo")
+        print_bool(string_eq(s, "hello"))
+    "#;
+    assert_snapshot!(run_main(src), @"
+    true
+    false
+    false
+    true
+    true
+    ");
+}
+
+#[test]
+fn string_concat_builds_new_strings() {
+    let src = r#"
+        print_string(string_concat("foo", "bar"))
+        print_string(string_concat(string_concat("a", "b"), "c"))
+        print_string(string_concat("", "x"))
+        print_string(string_concat("x", ""))
+    "#;
+    assert_snapshot!(run_main(src), @"
+    foobar
+    abc
+    x
+    x
+    ");
+}
+
+#[test]
+fn string_slice_by_byte_offsets() {
+    let src = r#"
+        print_string(string_slice("hello world", 6, 11))
+        print_string(string_slice("hello", 0, 5))
+        print_string(string_slice("hello", 2, 2))
+        print_int(string_len(string_slice("hello", 2, 2)))
+    "#;
+    assert_snapshot!(run_main(src), @"
+    world
+    hello
+
+    0
+    ");
+}
+
+#[test]
+fn string_slice_traps_on_bad_ranges() {
+    assert_snapshot!(
+        run_main_trap(r#"string_slice("hello", 3, 2)"#),
+        @"wasm trap: wasm `unreachable` instruction executed"
+    );
+    assert_snapshot!(
+        run_main_trap(r#"string_slice("hello", 0, 6)"#),
+        @"wasm trap: wasm `unreachable` instruction executed"
+    );
+    assert_snapshot!(
+        run_main_trap(r#"string_slice("hello", -1, 3)"#),
+        @"wasm trap: wasm `unreachable` instruction executed"
+    );
+}
+
+#[test]
+fn string_to_bytes_copies() {
+    // Mutating the byte array does not affect the source string.
+    let src = r#"
+        let s String = "Hi"
+        let bs Array[Byte] = string_to_bytes(s)
+        bs[0] = 88
+        print_string(s)
+        print_int(byte_to_int(bs[0]))
+    "#;
+    assert_snapshot!(run_main(src), @"
+    Hi
+    88
+    ");
+}
+
+#[test]
+fn string_from_bytes_copies() {
+    // Mutating the source bytes after conversion does not affect the string.
+    let src = r#"
+        let bs Array[Byte] = [72, 105]
+        let s String = string_from_bytes(bs)
+        bs[0] = 74
+        print_string(s)
+    "#;
+    assert_snapshot!(run_main(src), @"Hi");
+}
+
+#[test]
+fn string_from_bytes_invalid_utf8_prints_lossy() {
+    // Invalid UTF-8 is representable (as in Go); printing substitutes U+FFFD.
+    let src = r#"
+        print_string(string_from_bytes([255, 65]))
+    "#;
+    assert_snapshot!(run_main(src), @"�A");
+}
+
+#[test]
+fn bytes_new_and_bytes_copy() {
+    let src = r#"
+        let out Array[Byte] = bytes_new(5)
+        print_int(byte_to_int(out[0]))
+        let src Array[Byte] = string_to_bytes("world")
+        bytes_copy(out, 0, src, 0, 5)
+        print_string(string_from_bytes(out))
+        let shifted Array[Byte] = bytes_new(3)
+        bytes_copy(shifted, 0, src, 2, 3)
+        print_string(string_from_bytes(shifted))
+    "#;
+    assert_snapshot!(run_main(src), @"
+    0
+    world
+    rld
+    ");
+}
+
+#[test]
+fn bytes_copy_traps_out_of_bounds() {
+    let src = r#"
+        let dst Array[Byte] = bytes_new(2)
+        bytes_copy(dst, 0, string_to_bytes("hello"), 0, 5)
+    "#;
+    assert_snapshot!(run_main_trap(src), @"wasm trap: out of bounds array access");
+}

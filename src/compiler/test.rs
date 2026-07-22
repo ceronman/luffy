@@ -1595,3 +1595,114 @@ fn string_literals_are_deduplicated() {
     )
     "#);
 }
+
+// ── String builtins ──────────────────────────────────────────────────────────
+
+#[test]
+fn string_len_and_byte_at_inline() {
+    // string_len and string_byte_at are inlined instruction sequences, not
+    // calls.
+    let src = r#"
+        fn f(s String) Int: string_len(s)
+        fn g(s String) Byte: string_byte_at(s, 1)
+    "#;
+    assert_snapshot!(compile_to_wat(src), @"
+    (module
+      (type (;0;) (array (mut i8)))
+      (type (;1;) (func (param (ref null 0)) (result i64)))
+      (type (;2;) (func (param (ref null 0)) (result i32)))
+      (func (;0;) (type 1) (param (ref null 0)) (result i64)
+        local.get 0
+        array.len
+        i64.extend_i32_u
+      )
+      (func (;1;) (type 2) (param (ref null 0)) (result i32)
+        local.get 0
+        i64.const 1
+        i32.wrap_i64
+        array.get_u 0
+      )
+    )
+    ");
+}
+
+#[test]
+fn string_eq_synthesizes_a_function() {
+    // string_eq needs locals and a loop, so it becomes a synthesized
+    // function appended after user functions, emitted only because it is
+    // used; the call site shares its (deduplicated) type.
+    assert_snapshot!(compile_to_wat("fn f(a String, b String) Bool: string_eq(a, b)"), @"
+    (module
+      (type (;0;) (array (mut i8)))
+      (type (;1;) (func (param (ref null 0) (ref null 0)) (result i32)))
+      (func (;0;) (type 1) (param (ref null 0) (ref null 0)) (result i32)
+        local.get 0
+        local.get 1
+        call 1
+      )
+      (func (;1;) (type 1) (param (ref null 0) (ref null 0)) (result i32)
+        (local i32 i32)
+        local.get 0
+        array.len
+        local.set 2
+        local.get 2
+        local.get 1
+        array.len
+        i32.ne
+        if ;; label = @1
+          i32.const 0
+          return
+        end
+        block ;; label = @1
+          loop ;; label = @2
+            local.get 3
+            local.get 2
+            i32.ge_u
+            br_if 1 (;@1;)
+            local.get 0
+            local.get 3
+            array.get_u 0
+            local.get 1
+            local.get 3
+            array.get_u 0
+            i32.ne
+            if ;; label = @3
+              i32.const 0
+              return
+            end
+            local.get 3
+            i32.const 1
+            i32.add
+            local.set 3
+            br 0 (;@2;)
+          end
+        end
+        i32.const 1
+      )
+    )
+    ");
+}
+
+#[test]
+fn bytes_copy_interleaves_index_narrowing() {
+    // array.copy takes i32 offsets, so bytes_copy wraps each Int index right
+    // after evaluating it, between the other arguments.
+    assert_snapshot!(compile_to_wat(
+        "fn f(dst Array[Byte], src Array[Byte]) { bytes_copy(dst, 0, src, 1, 2) }"), @"
+    (module
+      (type (;0;) (array (mut i8)))
+      (type (;1;) (func (param (ref null 0) (ref null 0))))
+      (func (;0;) (type 1) (param (ref null 0) (ref null 0))
+        local.get 0
+        i64.const 0
+        i32.wrap_i64
+        local.get 1
+        i64.const 1
+        i32.wrap_i64
+        i64.const 2
+        i32.wrap_i64
+        array.copy 0 0
+      )
+    )
+    ");
+}

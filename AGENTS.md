@@ -297,17 +297,22 @@ The compiler interns Wasm types in a `WasmTypes` helper keyed by the semantic `T
 
 ## Builtin Functions
 
-Builtins are functions pre-declared by the compiler (`Resolver::declare_builtins` in `semantic.rs`, `DeclarationKind::Builtin`) and lowered inline: `Compiler::expr`'s `Call` arm dispatches to `Compiler::builtin_call`, which emits a fixed instruction sequence at the call site instead of a `call`. They type-check exactly like user functions (arity and argument types), and they exist so that Wasm numeric instructions without a Luffy operator are reachable from source code.
+Builtins are functions pre-declared by the compiler (`Resolver::declare_builtins` in `semantic.rs`, `DeclarationKind::Builtin`). They type-check exactly like user functions (arity and argument types). `Compiler::expr`'s `Call` arm dispatches to `Compiler::builtin_call`, which lowers them in one of two strata:
 
-The current set (all signatures over `Int`/`Float`/`Byte`):
+- **Inlined intrinsics** — a fixed instruction sequence emitted at the call site instead of a `call`.
+- **Synthesized functions** — hand-built `ir::Function`s for operations that need locals and loops (`Compiler::synthesize`). Created on first use only (`Compiler::synth_func_idx`); their function indices come after imports and user functions, and `Compiler::module` appends their bodies in assignment order.
 
-- **Int ↦ Wasm `i64`**: `int_and`, `int_or`, `int_xor`, `int_shl`, `int_shr` (`shr_s`), `int_shr_u`, `int_rotl`, `int_rotr`, `int_clz`, `int_ctz`, `int_popcnt`, `int_div_u`, `int_rem_u`.
-- **Float ↦ Wasm `f64`**: `float_sqrt`, `float_abs`, `float_ceil`, `float_floor`, `float_trunc`, `float_nearest`, `float_min`, `float_max`, `float_copysign`.
-- **Conversions**: `int_to_float` (`f64.convert_i64_s`), `float_to_int` (`i64.trunc_f64_s`, traps on NaN/out-of-range), `byte_to_int` (`i64.extend_i32_u`), `int_to_byte` (range-checked: traps via `unreachable` unless 0–255).
+The current set:
+
+- **Int ↦ Wasm `i64`** (inlined): `int_and`, `int_or`, `int_xor`, `int_shl`, `int_shr` (`shr_s`), `int_shr_u`, `int_rotl`, `int_rotr`, `int_clz`, `int_ctz`, `int_popcnt`, `int_div_u`, `int_rem_u`.
+- **Float ↦ Wasm `f64`** (inlined): `float_sqrt`, `float_abs`, `float_ceil`, `float_floor`, `float_trunc`, `float_nearest`, `float_min`, `float_max`, `float_copysign`.
+- **Conversions** (inlined): `int_to_float` (`f64.convert_i64_s`), `float_to_int` (`i64.trunc_f64_s`, traps on NaN/out-of-range), `byte_to_int` (`i64.extend_i32_u`), `int_to_byte` (range-checked: traps via `unreachable` unless 0–255).
+- **Strings/bytes, inlined**: `string_len` (`array.len` + extend), `string_byte_at` (`array.get_u`, traps OOB), `bytes_new` (`array.new_default`), `bytes_copy` (`array.copy`; it interleaves `i32.wrap_i64` between argument evaluations because the i32 offsets sit under later operands — the one builtin that evaluates its own arguments).
+- **Strings, synthesized**: `string_eq` (length compare + byte loop), `string_concat` (`array.new_default` + two `array.copy`), `string_slice` (range-checked, traps via `unreachable`), and `string_to_bytes`/`string_from_bytes`, which **share one synthesized body** (`"bytes_dup"`, a whole-array copy — `String` and `Array[Byte]` have the same Wasm type, and copying in both directions is what preserves `String` immutability).
 
 `int_to_byte` is the one multi-instruction lowering: it needs its argument twice, so it uses a per-function **i64 scratch local** (`Compiler::scratch_i64`), allocated lazily after params and user locals; `Compiler::function` appends it to the locals list when used. The single slot is safe to share between call sites because every inline sequence stores and consumes it without evaluating other expressions in between. The `if/unreachable` trap check opens a control frame, so the sequence wraps it in `loops.enter_frame()`/`exit_frame()` to keep `break`/`continue` label arithmetic correct.
 
-To add a new inline builtin: add its signature to `declare_builtins`, its lowering arm to `builtin_call`, any new `ir::Instruction` variants + `emit.rs` encodings, and tests at the semantic/compiler/emit layers (`language_tour.md` has a user-facing table to extend).
+To add a new builtin: add its signature to `declare_builtins`, its lowering arm to `builtin_call` (plus a body in `synthesize` if it needs locals/loops), any new `ir::Instruction` variants + `emit.rs` encodings, and tests at the semantic/compiler/emit layers (`language_tour.md` has user-facing tables to extend).
 
 ---
 

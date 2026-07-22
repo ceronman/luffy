@@ -74,6 +74,7 @@ pub enum Instruction {
     I32GtU,
     I32LeU,
     I32LtU,
+    I32Add,
 
     If(BlockType),
     Else,
@@ -147,6 +148,16 @@ pub enum Instruction {
     /// Read from an array of packed (`i8`/`i16`) elements, zero-extending.
     ArrayGetU(TypeIdx),
     ArraySet(TypeIdx),
+    /// The array's length as an i32; works on any array reference.
+    ArrayLen,
+    /// A new array of zero-filled elements; takes a [len] i32 operand.
+    ArrayNewDefault(TypeIdx),
+    /// Bulk element copy; takes [dst, dst_off, src, src_off, size], with
+    /// i32 offsets and size. Ranges are bounds-checked (traps).
+    ArrayCopy {
+        dst: TypeIdx,
+        src: TypeIdx,
+    },
     ArrayNewFixed {
         type_idx: TypeIdx,
         len: u32,

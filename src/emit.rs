@@ -152,6 +152,12 @@ impl ir::Instruction {
             ir::Instruction::Drop => Instruction::Drop,
             ir::Instruction::ArrayGet(idx) => Instruction::ArrayGet(*idx),
             ir::Instruction::ArrayGetU(idx) => Instruction::ArrayGetU(*idx),
+            ir::Instruction::ArrayLen => Instruction::ArrayLen,
+            ir::Instruction::ArrayNewDefault(idx) => Instruction::ArrayNewDefault(*idx),
+            ir::Instruction::ArrayCopy { dst, src } => Instruction::ArrayCopy {
+                array_type_index_dst: *dst,
+                array_type_index_src: *src,
+            },
             ir::Instruction::ArraySet(idx) => Instruction::ArraySet(*idx),
             ir::Instruction::ArrayNewFixed { type_idx, len } => Instruction::ArrayNewFixed {
                 array_type_index: *type_idx,
@@ -237,6 +243,7 @@ impl ir::Instruction {
             ir::Instruction::I32GtU => Instruction::I32GtU,
             ir::Instruction::I32LeU => Instruction::I32LeU,
             ir::Instruction::I32LtU => Instruction::I32LtU,
+            ir::Instruction::I32Add => Instruction::I32Add,
             ir::Instruction::If(block_type) => Instruction::If(block_type.encode()),
             ir::Instruction::Else => Instruction::Else,
             ir::Instruction::Block(block_type) => Instruction::Block(block_type.encode()),

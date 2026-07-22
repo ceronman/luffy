@@ -24,6 +24,13 @@ struct Compiler {
     /// Passive data segments for string literals, deduplicated by content.
     data: Vec<Vec<u8>>,
     data_indices: HashMap<String, ir::Idx>,
+
+    /// Synthesized builtin functions (string_eq, string_concat, …), created
+    /// on first use. Their indices come after imports and user functions;
+    /// bodies are appended by `module` in `synth_order`.
+    synth_addresses: HashMap<&'static str, ir::FuncIdx>,
+    synth_order: Vec<&'static str>,
+    next_func_idx: ir::FuncIdx,
 }
 
 #[derive(Clone, Copy)]
@@ -99,6 +106,10 @@ impl Compiler {
             }
         }
 
+        // Synthesized builtin functions get the indices after imports and
+        // user functions, handed out on first use during body lowering.
+        self.next_func_idx = self.func_addresses.len() as ir::FuncIdx;
+
         for item in &module.items {
             if let ast::ItemKind::Function {
                 export,
@@ -121,6 +132,14 @@ impl Compiler {
                 }
             }
         }
+
+        // Bodies for the synthesized functions used above, in the order
+        // their indices were assigned.
+        let synth_names = std::mem::take(&mut self.synth_order);
+        for name in synth_names {
+            functions.push(self.synthesize(name));
+        }
+
         ir::Module {
             types: std::mem::take(&mut self.wasm_types.groups),
             imports,
@@ -385,14 +404,14 @@ impl Compiler {
                 let ast::ExprKind::Variable { name } = &callee.kind else {
                     panic!("Invalid callee");
                 };
-                for arg in args {
-                    self.expr(ins, arg);
-                }
                 let decl_id = self.declaration_id(name);
                 if let DeclarationKind::Builtin = self.semantics.declarations[decl_id].kind {
                     let builtin = self.semantics.declarations[decl_id].name.clone();
-                    self.builtin_call(ins, &builtin);
+                    self.builtin_call(ins, &builtin, args);
                 } else {
+                    for arg in args {
+                        self.expr(ins, arg);
+                    }
                     let address = self.func_addr(name);
                     ins.push(ir::Instruction::Call(address.idx));
                 }
@@ -493,11 +512,60 @@ impl Compiler {
         }
     }
 
-    /// Lowers a call to a builtin function to its inline instruction
-    /// sequence. The arguments are already on the stack.
-    fn builtin_call(&mut self, ins: &mut Vec<ir::Instruction>, name: &str) {
+    /// Lowers a call to a builtin function: either an inline instruction
+    /// sequence at the call site, or a `call` to a synthesized function
+    /// (`synthesize`) for builtins that need locals and loops.
+    fn builtin_call(&mut self, ins: &mut Vec<ir::Instruction>, name: &str, args: &[ast::Expr]) {
         use ir::Instruction as I;
+        // bytes_copy must interleave index narrowing between arguments
+        // (array.copy takes i32 offsets buried under later operands), so it
+        // evaluates them itself; every other builtin takes its arguments
+        // evaluated left to right with at most a narrowing of the top.
+        if name == "bytes_copy" {
+            let b = self.byte_array_type_idx();
+            self.expr(ins, &args[0]);
+            self.expr(ins, &args[1]);
+            ins.push(I::I32WrapI64);
+            self.expr(ins, &args[2]);
+            self.expr(ins, &args[3]);
+            ins.push(I::I32WrapI64);
+            self.expr(ins, &args[4]);
+            ins.push(I::I32WrapI64);
+            ins.push(I::ArrayCopy { dst: b, src: b });
+            return;
+        }
+        for arg in args {
+            self.expr(ins, arg);
+        }
         match name {
+            "string_len" => {
+                ins.push(I::ArrayLen);
+                ins.push(I::I64ExtendI32U);
+            }
+            "string_byte_at" => {
+                let b = self.byte_array_type_idx();
+                ins.push(I::I32WrapI64);
+                ins.push(I::ArrayGetU(b));
+            }
+            "bytes_new" => {
+                let b = self.byte_array_type_idx();
+                ins.push(I::I32WrapI64);
+                ins.push(I::ArrayNewDefault(b));
+            }
+            "string_eq" | "string_concat" | "string_slice" => {
+                let func_idx = self.synth_func_idx(match name {
+                    "string_eq" => "string_eq",
+                    "string_concat" => "string_concat",
+                    _ => "string_slice",
+                });
+                ins.push(I::Call(func_idx));
+            }
+            // Both directions are the same Wasm function: a whole-array copy
+            // (String and Array[Byte] share their Wasm type).
+            "string_to_bytes" | "string_from_bytes" => {
+                let func_idx = self.synth_func_idx("bytes_dup");
+                ins.push(I::Call(func_idx));
+            }
             "byte_to_int" => ins.push(I::I64ExtendI32U),
             "int_to_byte" => {
                 // Traps unless 0 <= n <= 255; the unsigned comparison makes
@@ -548,6 +616,203 @@ impl Compiler {
     /// consumes it without evaluating other expressions in between.
     fn scratch_i64(&mut self) -> ir::LocalIdx {
         *self.scratch_i64.get_or_insert(self.scratch_base)
+    }
+
+    /// The Wasm type index of `(array (mut i8))` — the shared representation
+    /// of `String` and `Array[Byte]`.
+    fn byte_array_type_idx(&mut self) -> ir::TypeIdx {
+        self.wasm_types.type_idx(&Type::Array {
+            ty: Rc::new(Type::Byte),
+        })
+    }
+
+    /// The function index of a synthesized builtin, assigning the next free
+    /// index (after imports and user functions) on first use.
+    fn synth_func_idx(&mut self, name: &'static str) -> ir::FuncIdx {
+        if let Some(idx) = self.synth_addresses.get(name) {
+            return *idx;
+        }
+        let idx = self.next_func_idx;
+        self.next_func_idx += 1;
+        self.synth_addresses.insert(name, idx);
+        self.synth_order.push(name);
+        idx
+    }
+
+    /// Builds the body of a synthesized builtin function. These are
+    /// hand-written IR for the string operations that need locals and loops,
+    /// which an inline sequence cannot have.
+    fn synthesize(&mut self, name: &'static str) -> ir::Function {
+        use ir::Instruction as I;
+        let b = self.byte_array_type_idx();
+        let func_ty = |params: &[Type], ret: Type| Type::Function {
+            params: Rc::from(params),
+            ret: Rc::from(ret),
+        };
+        match name {
+            // fn string_eq(a String, b String) Bool
+            // Params: 0=a, 1=b. Locals: 2=len(i32), 3=i(i32).
+            "string_eq" => ir::Function {
+                ty: self
+                    .wasm_types
+                    .type_idx(&func_ty(&[Type::String, Type::String], Type::Bool)),
+                locals: vec![ir::ValType::I32, ir::ValType::I32],
+                body: vec![
+                    // if len(a) != len(b) { return false }
+                    I::LocalGet(0),
+                    I::ArrayLen,
+                    I::LocalSet(2),
+                    I::LocalGet(2),
+                    I::LocalGet(1),
+                    I::ArrayLen,
+                    I::I32Ne,
+                    I::If(ir::BlockType::Empty),
+                    I::I32Const(0),
+                    I::Return,
+                    I::End,
+                    // while i < len: if a[i] != b[i] { return false }
+                    I::Block(ir::BlockType::Empty),
+                    I::Loop(ir::BlockType::Empty),
+                    I::LocalGet(3),
+                    I::LocalGet(2),
+                    I::I32GeU,
+                    I::BrIf(1),
+                    I::LocalGet(0),
+                    I::LocalGet(3),
+                    I::ArrayGetU(b),
+                    I::LocalGet(1),
+                    I::LocalGet(3),
+                    I::ArrayGetU(b),
+                    I::I32Ne,
+                    I::If(ir::BlockType::Empty),
+                    I::I32Const(0),
+                    I::Return,
+                    I::End,
+                    I::LocalGet(3),
+                    I::I32Const(1),
+                    I::I32Add,
+                    I::LocalSet(3),
+                    I::Br(0),
+                    I::End,
+                    I::End,
+                    I::I32Const(1),
+                    I::End,
+                ],
+            },
+            // fn string_concat(a String, b String) String
+            // Params: 0=a, 1=b. Locals: 2=len_a(i32), 3=len_b(i32), 4=result.
+            "string_concat" => ir::Function {
+                ty: self
+                    .wasm_types
+                    .type_idx(&func_ty(&[Type::String, Type::String], Type::String)),
+                locals: vec![ir::ValType::I32, ir::ValType::I32, ir::ValType::Ref(b)],
+                body: vec![
+                    I::LocalGet(0),
+                    I::ArrayLen,
+                    I::LocalSet(2),
+                    I::LocalGet(1),
+                    I::ArrayLen,
+                    I::LocalSet(3),
+                    // result = new array of len_a + len_b zeroes
+                    I::LocalGet(2),
+                    I::LocalGet(3),
+                    I::I32Add,
+                    I::ArrayNewDefault(b),
+                    I::LocalSet(4),
+                    // result[0..len_a] = a
+                    I::LocalGet(4),
+                    I::I32Const(0),
+                    I::LocalGet(0),
+                    I::I32Const(0),
+                    I::LocalGet(2),
+                    I::ArrayCopy { dst: b, src: b },
+                    // result[len_a..] = b
+                    I::LocalGet(4),
+                    I::LocalGet(2),
+                    I::LocalGet(1),
+                    I::I32Const(0),
+                    I::LocalGet(3),
+                    I::ArrayCopy { dst: b, src: b },
+                    I::LocalGet(4),
+                    I::End,
+                ],
+            },
+            // fn string_slice(s String, start Int, end Int) String
+            // Params: 0=s, 1=start, 2=end. Locals: 3=len(i32), 4=result.
+            // Traps unless 0 <= start <= end <= len(s); the unsigned i64
+            // comparisons make negative operands look huge.
+            "string_slice" => ir::Function {
+                ty: self.wasm_types.type_idx(&func_ty(
+                    &[Type::String, Type::Int, Type::Int],
+                    Type::String,
+                )),
+                locals: vec![ir::ValType::I32, ir::ValType::Ref(b)],
+                body: vec![
+                    // if end u> len(s) { trap }
+                    I::LocalGet(2),
+                    I::LocalGet(0),
+                    I::ArrayLen,
+                    I::I64ExtendI32U,
+                    I::I64GtU,
+                    I::If(ir::BlockType::Empty),
+                    I::Unreachable,
+                    I::End,
+                    // if start u> end { trap }
+                    I::LocalGet(1),
+                    I::LocalGet(2),
+                    I::I64GtU,
+                    I::If(ir::BlockType::Empty),
+                    I::Unreachable,
+                    I::End,
+                    // len = end - start; result = new array of len zeroes
+                    I::LocalGet(2),
+                    I::LocalGet(1),
+                    I::I64Sub,
+                    I::I32WrapI64,
+                    I::LocalSet(3),
+                    I::LocalGet(3),
+                    I::ArrayNewDefault(b),
+                    I::LocalSet(4),
+                    // result[0..len] = s[start..end]
+                    I::LocalGet(4),
+                    I::I32Const(0),
+                    I::LocalGet(0),
+                    I::LocalGet(1),
+                    I::I32WrapI64,
+                    I::LocalGet(3),
+                    I::ArrayCopy { dst: b, src: b },
+                    I::LocalGet(4),
+                    I::End,
+                ],
+            },
+            // The shared body of string_to_bytes and string_from_bytes: a
+            // whole-array copy. Copying protects String immutability in both
+            // directions.
+            // Params: 0=source. Locals: 1=len(i32), 2=result.
+            "bytes_dup" => ir::Function {
+                ty: self
+                    .wasm_types
+                    .type_idx(&func_ty(&[Type::String], Type::String)),
+                locals: vec![ir::ValType::I32, ir::ValType::Ref(b)],
+                body: vec![
+                    I::LocalGet(0),
+                    I::ArrayLen,
+                    I::LocalSet(1),
+                    I::LocalGet(1),
+                    I::ArrayNewDefault(b),
+                    I::LocalSet(2),
+                    I::LocalGet(2),
+                    I::I32Const(0),
+                    I::LocalGet(0),
+                    I::I32Const(0),
+                    I::LocalGet(1),
+                    I::ArrayCopy { dst: b, src: b },
+                    I::LocalGet(2),
+                    I::End,
+                ],
+            },
+            _ => panic!("Unknown synthesized function '{name}'"),
+        }
     }
 
     /// The data segment holding a string literal's UTF-8 bytes, created on
@@ -1014,6 +1279,9 @@ pub fn compile(module: &ast::Module, semantics: Semantics) -> ir::Module {
         scratch_base: 0,
         data: Vec::new(),
         data_indices: HashMap::new(),
+        synth_addresses: HashMap::new(),
+        synth_order: Vec::new(),
+        next_func_idx: 0,
     };
     compiler.module(module)
 }

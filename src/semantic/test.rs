@@ -1686,3 +1686,49 @@ fn valid_long_string_literal() {
     let src = format!(r#"fn f() {{ let s String = "{}" }}"#, "a".repeat(100_000));
     assert_eq!(check(&src), "<no error>");
 }
+
+// ── String builtins ──────────────────────────────────────────────────────────
+
+#[test]
+fn valid_string_builtins() {
+    let src = r#"
+        fn f(s String, t String) String {
+            let n Int = string_len(s)
+            let b Byte = string_byte_at(s, 0)
+            let eq Bool = string_eq(s, t)
+            return string_concat(s, string_slice(t, 1, n))
+        }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn valid_bytes_builtins() {
+    let src = r#"
+        fn f(s String) String {
+            let bs Array[Byte] = string_to_bytes(s)
+            let out Array[Byte] = bytes_new(string_len(s))
+            bytes_copy(out, 0, bs, 0, string_len(s))
+            return string_from_bytes(out)
+        }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn error_string_builtin_wrong_arg_type() {
+    assert_snapshot!(check("fn f(s String) Int { return string_len(1) }"), @"
+    fn f(s String) Int { return string_len(1) }
+                                           ^ ─── Type mismatch: expected 'String', found 'Int'
+    ");
+}
+
+#[test]
+fn error_string_from_bytes_rejects_string() {
+    // String and Array[Byte] share a runtime representation but stay
+    // distinct in the type system.
+    assert_snapshot!(check("fn f(s String) String { return string_from_bytes(s) }"), @"
+    fn f(s String) String { return string_from_bytes(s) }
+                                                     ^ ─── Type mismatch: expected 'Array[Byte]', found 'String'
+    ");
+}

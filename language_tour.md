@@ -598,8 +598,8 @@ export fn main() {
 ### Properties
 
 - **Immutable.** No operation modifies a string; anything that looks like a change produces a new string. Consequently, the reference semantics that arrays and structs have is unobservable for strings.
-- **Not an array.** `s[i]` is a type error — indexing would have to choose between bytes and characters, and neither is an obvious default. Byte-level access arrives with the string builtin functions in a coming phase.
-- **No operators yet.** `==` on strings is rejected ("Equality operators are not supported"), and `+` does not concatenate. Content equality, length, concatenation, and slicing arrive as builtin functions (`string_eq`, `string_len`, `string_concat`, `string_slice`) in a coming phase.
+- **Not an array.** `s[i]` is a type error — indexing would have to choose between bytes and characters, and neither is an obvious default. Byte-level access is the explicit `string_byte_at(s, i)`.
+- **No operators.** `==` on strings is rejected ("Equality operators are not supported"), and `+` does not concatenate. Content equality, length, concatenation, and slicing are builtin functions — `string_eq`, `string_len`, `string_concat`, `string_slice` — covered in [Builtin functions](#builtin-functions) below.
 - Strings work everywhere values do: parameters, returns, `Array[String]`, and struct fields.
 - Printing is a host import, like the other `print_*` functions: `import fn print_string(s String)`. Invalid UTF-8 cannot be produced today (literals come from validated source text); if it ever is, printing replaces bad sequences with `U+FFFD`.
 - String literals are stored compactly as data segments in the compiled module — duplicate literals share one segment — and have no practical length limit.
@@ -608,7 +608,7 @@ export fn main() {
 
 ## Builtin functions
 
-Luffy pre-declares a set of builtin functions. They are called and type-checked like ordinary functions, but the compiler expands each call inline into one or a few Wasm instructions — there is no function call at runtime. Because they occupy the ordinary function namespace, declaring your own function with a builtin's name is an error ("already declared").
+Luffy pre-declares a set of builtin functions. They are called and type-checked like ordinary functions, but the compiler lowers them specially: most expand inline into one or a few Wasm instructions, and a few string operations that need loops compile as calls to small compiler-generated helper functions (emitted only when used). Because builtins occupy the ordinary function namespace, declaring your own function with a builtin's name is an error ("already declared").
 
 The set covers the Wasm numeric operations that have no Luffy operator, plus the `Byte`/`Int` conversions:
 
@@ -666,6 +666,42 @@ Shift and rotate counts are taken modulo 64, following Wasm. `/` and `%` are the
 | `float_to_int(x Float) Int` | truncates toward zero; **traps** on NaN or out-of-range values |
 | `byte_to_int(b Byte) Int` | always succeeds |
 | `int_to_byte(n Int) Byte` | **traps** unless `n` is in 0–255 |
+
+### String builtins
+
+All offsets and lengths are **bytes**, not characters (see [Strings](#strings)).
+
+| Function | Result |
+|----------|--------|
+| `string_len(s String) Int` | byte length; O(1) |
+| `string_byte_at(s String, i Int) Byte` | byte at offset `i`; **traps** out of bounds |
+| `string_eq(a String, b String) Bool` | content equality |
+| `string_concat(a String, b String) String` | a new string, `a` followed by `b` |
+| `string_slice(s String, start Int, end Int) String` | new string of bytes `start..end`; **traps** unless `0 <= start <= end <= string_len(s)` |
+| `string_to_bytes(s String) Array[Byte]` | the string's bytes, **as a copy** |
+| `string_from_bytes(b Array[Byte]) String` | a string of those bytes, **as a copy** |
+
+The conversions always copy, in both directions — that is what keeps strings immutable while `Array[Byte]` stays mutable. `string_from_bytes` can construct invalid UTF-8 (as in Go); string operations are byte-oriented and unaffected, and `print_string` replaces invalid sequences with `U+FFFD`.
+
+```luffy
+import fn print_string(s String)
+import fn print_bool(x Bool)
+
+export fn main() {
+    let s String = string_concat("Hello, ", "world")
+    print_string(string_slice(s, 7, string_len(s)))   // world
+    print_bool(string_eq(s, "Hello, world"))          // true
+}
+```
+
+### Byte-array builtins
+
+| Function | Result |
+|----------|--------|
+| `bytes_new(n Int) Array[Byte]` | a new zero-filled array of length `n` |
+| `bytes_copy(dst Array[Byte], dst_off Int, src Array[Byte], src_off Int, n Int)` | copies `n` bytes; **traps** if either range is out of bounds |
+
+These are the building blocks for growable buffers (a `StringBuilder` arrives with the prelude in a later phase).
 
 ---
 
