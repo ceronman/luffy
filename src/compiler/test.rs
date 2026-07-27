@@ -1,8 +1,8 @@
-use crate::{compiler, emit, parser, pretty, semantic};
+use crate::{compiler, emit, prelude, pretty, semantic};
 use insta::assert_snapshot;
 
 fn compile_to_wat(src: &str) -> String {
-    match parser::parse(src) {
+    match prelude::parse_with_prelude(src) {
         Ok(module) => match semantic::semantic_analysis(&module) {
             Ok(semantics) => {
                 let module = compiler::compile(&module, semantics);
@@ -1702,6 +1702,59 @@ fn bytes_copy_interleaves_index_narrowing() {
         i64.const 2
         i32.wrap_i64
         array.copy 0 0
+      )
+    )
+    ");
+}
+
+// ── Prelude ──────────────────────────────────────────────────────────────────
+
+#[test]
+fn prelude_function_injected_only_when_used() {
+    // Referencing string_scalar_width splices exactly that prelude function
+    // into the module, after the user functions. (Every other snapshot in
+    // this file shows the flip side: unused prelude injects nothing.)
+    assert_snapshot!(compile_to_wat("fn f(s String) Int: string_scalar_width(s, 0)"), @"
+    (module
+      (type (;0;) (array (mut i8)))
+      (type (;1;) (func (param (ref null 0)) (result i64)))
+      (type (;2;) (func (param (ref null 0) i64) (result i64)))
+      (func (;0;) (type 1) (param (ref null 0)) (result i64)
+        local.get 0
+        i64.const 0
+        call 1
+      )
+      (func (;1;) (type 2) (param (ref null 0) i64) (result i64)
+        (local i64)
+        local.get 0
+        local.get 1
+        i32.wrap_i64
+        array.get_u 0
+        i64.extend_i32_u
+        local.set 2
+        local.get 2
+        i64.const 128
+        i64.lt_s
+        if ;; label = @1
+          i64.const 1
+          return
+        end
+        local.get 2
+        i64.const 224
+        i64.lt_s
+        if ;; label = @1
+          i64.const 2
+          return
+        end
+        local.get 2
+        i64.const 240
+        i64.lt_s
+        if ;; label = @1
+          i64.const 3
+          return
+        end
+        i64.const 4
+        return
       )
     )
     ");

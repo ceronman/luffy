@@ -1,4 +1,4 @@
-use crate::{compiler, emit, parser, pretty, semantic};
+use crate::{compiler, emit, prelude, pretty, semantic};
 use insta::assert_snapshot;
 
 pub fn run_to_stdout(binary: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error>> {
@@ -67,7 +67,7 @@ pub fn run_to_stdout(binary: &[u8]) -> Result<Vec<u8>, Box<dyn std::error::Error
 }
 
 fn compile_and_run(src: &str) -> String {
-    match parser::parse(&src) {
+    match prelude::parse_with_prelude(src) {
         Ok(module) => match semantic::semantic_analysis(&module) {
             Ok(semantics) => {
                 let wasm_module = compiler::compile(&module, semantics);
@@ -1214,7 +1214,7 @@ fn run_main_trap(body: &str) -> String {
     src.push_str("export fn main() {\n");
     src.push_str(body);
     src.push_str("}\n");
-    let module = parser::parse(&src).expect("parse error");
+    let module = prelude::parse_with_prelude(&src).expect("parse error");
     let semantics = semantic::semantic_analysis(&module).expect("semantic error");
     let wasm_module = compiler::compile(&module, semantics);
     let binary = emit::emit(wasm_module);
@@ -1671,4 +1671,146 @@ fn bytes_copy_traps_out_of_bounds() {
         bytes_copy(dst, 0, string_to_bytes("hello"), 0, 5)
     "#;
     assert_snapshot!(run_main_trap(src), @"wasm trap: out of bounds array access");
+}
+
+// ── Prelude ──────────────────────────────────────────────────────────────────
+
+#[test]
+fn prelude_scalar_functions() {
+    // "aé😀": 'a' is 1 byte, 'é' 2 bytes, '😀' 4 bytes — 7 bytes, 3 scalars.
+    let src = r#"
+        let s String = "aé😀"
+        print_int(string_len(s))
+        print_int(string_count_scalars(s))
+        print_int(string_scalar_width(s, 0))
+        print_int(string_scalar_width(s, 1))
+        print_int(string_scalar_width(s, 3))
+        print_int(string_scalar_at(s, 0))
+        print_int(string_scalar_at(s, 1))
+        print_int(string_scalar_at(s, 3))
+    "#;
+    assert_snapshot!(run_main(src), @"
+    7
+    3
+    1
+    2
+    4
+    97
+    233
+    128512
+    ");
+}
+
+#[test]
+fn prelude_search_functions() {
+    let src = r#"
+        print_int(string_index_of("hello world", "world"))
+        print_int(string_index_of("hello", "xyz"))
+        print_int(string_index_of("hello", ""))
+        print_int(string_index_of("aaab", "ab"))
+        print_bool(string_contains("hello", "ell"))
+        print_bool(string_contains("hello", "z"))
+        print_bool(string_starts_with("hello", "he"))
+        print_bool(string_starts_with("hello", "hello!"))
+        print_bool(string_ends_with("hello", "llo"))
+        print_bool(string_ends_with("hello", "hell"))
+    "#;
+    assert_snapshot!(run_main(src), @"
+    6
+    -1
+    0
+    2
+    true
+    false
+    true
+    false
+    true
+    false
+    ");
+}
+
+#[test]
+fn prelude_string_cmp() {
+    // Lexicographic by bytes; multibyte UTF-8 leading bytes are > 127, so
+    // "é" sorts after "z".
+    let src = r#"
+        print_int(string_cmp("a", "b"))
+        print_int(string_cmp("b", "a"))
+        print_int(string_cmp("abc", "abc"))
+        print_int(string_cmp("ab", "abc"))
+        print_int(string_cmp("abc", "ab"))
+        print_int(string_cmp("é", "z"))
+    "#;
+    assert_snapshot!(run_main(src), @"
+    -1
+    1
+    0
+    -1
+    1
+    1
+    ");
+}
+
+#[test]
+fn prelude_int_to_string() {
+    let src = r#"
+        print_string(int_to_string(0))
+        print_string(int_to_string(42))
+        print_string(int_to_string(-42))
+        print_string(int_to_string(9223372036854775807))
+        print_string(int_to_string(-9223372036854775807 - 1))
+    "#;
+    assert_snapshot!(run_main(src), @"
+    0
+    42
+    -42
+    9223372036854775807
+    -9223372036854775808
+    ");
+}
+
+#[test]
+fn prelude_string_to_int() {
+    let src = r#"
+        print_int(string_to_int("42"))
+        print_int(string_to_int("-42"))
+        print_int(string_to_int("0"))
+        print_int(string_to_int(int_to_string(123456789)))
+    "#;
+    assert_snapshot!(run_main(src), @"
+    42
+    -42
+    0
+    123456789
+    ");
+}
+
+#[test]
+fn prelude_string_to_int_traps_on_invalid() {
+    assert_snapshot!(
+        run_main_trap(r#"string_to_int("")"#),
+        @"wasm trap: wasm `unreachable` instruction executed"
+    );
+    assert_snapshot!(
+        run_main_trap(r#"string_to_int("-")"#),
+        @"wasm trap: wasm `unreachable` instruction executed"
+    );
+    assert_snapshot!(
+        run_main_trap(r#"string_to_int("12x")"#),
+        @"wasm trap: wasm `unreachable` instruction executed"
+    );
+}
+
+#[test]
+fn prelude_user_definition_shadows() {
+    // A user function with a prelude name wins; the prelude version is not
+    // injected.
+    let src = r#"
+        import fn print_int(x Int)
+        fn string_cmp(a Int, b Int) Int: a - b
+        export fn main() {
+            print_int(string_cmp(5, 3))
+        }
+    "#;
+    assert_snapshot!(compile_and_run(src), @"2");
 }

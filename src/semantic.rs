@@ -246,7 +246,11 @@ impl Resolver {
             ("string_to_bytes", &[String], byte_array()),
             ("string_from_bytes", &[byte_array()], String),
             ("bytes_new", &[Int], byte_array()),
-            ("bytes_copy", &[byte_array(), Int, byte_array(), Int, Int], Unit),
+            (
+                "bytes_copy",
+                &[byte_array(), Int, byte_array(), Int, Int],
+                Unit,
+            ),
             ("int_and", &[Int, Int], Int),
             ("int_or", &[Int, Int], Int),
             ("int_xor", &[Int, Int], Int),

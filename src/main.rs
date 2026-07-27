@@ -5,6 +5,7 @@ pub mod error;
 pub mod ir;
 pub mod lexer;
 pub mod parser;
+pub mod prelude;
 pub mod pretty;
 pub mod semantic;
 pub mod source;
@@ -21,7 +22,7 @@ fn main() {
         }
     "#;
 
-    let module = match parser::parse(code) {
+    let module = match prelude::parse_with_prelude(code) {
         Ok(module) => module,
         Err(err) => {
             eprintln!("Error:\n{}", pretty::annotate_error(code, &err));

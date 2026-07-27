@@ -1,8 +1,8 @@
-use crate::{parser, pretty, semantic};
+use crate::{prelude, pretty, semantic};
 use insta::assert_snapshot;
 
 fn check(src: &str) -> String {
-    match parser::parse(src) {
+    match prelude::parse_with_prelude(src) {
         Ok(module) => match semantic::semantic_analysis(&module) {
             Ok(_) => "<no error>".to_string(),
             Err(e) => pretty::annotate_error_single(src, &e),
@@ -1731,4 +1731,45 @@ fn error_string_from_bytes_rejects_string() {
     fn f(s String) String { return string_from_bytes(s) }
                                                      ^ ─── Type mismatch: expected 'Array[Byte]', found 'String'
     ");
+}
+
+// ── Prelude ──────────────────────────────────────────────────────────────────
+
+#[test]
+fn valid_prelude_functions_available() {
+    let src = r#"
+        fn f(s String) Int {
+            let n Int = string_count_scalars(s)
+            let scalar Int = string_scalar_at(s, 0)
+            if string_contains(s, "x") {
+                return string_index_of(s, "x")
+            }
+            if string_starts_with(s, "a") and string_ends_with(s, "z") {
+                return string_cmp(s, "abc")
+            }
+            return string_to_int(int_to_string(n + scalar))
+        }
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn valid_user_definition_shadows_prelude() {
+    // A user top-level declaration with a prelude name wins; the prelude
+    // version is not injected, so there is no "already declared" collision.
+    let src = r#"
+        fn string_cmp(a Int, b Int) Int: a - b
+        fn f() Int: string_cmp(3, 1)
+    "#;
+    assert_snapshot!(check(src), @"<no error>");
+}
+
+#[test]
+fn error_prelude_function_wrong_args() {
+    // Prelude functions type-check like ordinary functions; the error points
+    // at the user's call site.
+    assert_snapshot!(check(r#"fn f() Int: string_index_of("abc", 1)"#), @r#"
+    fn f() Int: string_index_of("abc", 1)
+                                       ^ ─── Type mismatch: expected 'String', found 'Int'
+    "#);
 }

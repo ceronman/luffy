@@ -1,0 +1,172 @@
+// The Luffy prelude: library functions written in Luffy itself.
+//
+// The compiler splices these items into every program, but only the ones the
+// program (transitively) references. A user top-level declaration with the
+// same name shadows the prelude version, which is then not injected.
+//
+// Everything here builds on the builtin functions (string_len,
+// string_byte_at, string_slice, ...) and assumes strings hold valid UTF-8.
+
+// Traps unconditionally (int_to_byte traps outside 0-255).
+// TODO: Make trap a builin
+fn trap() {
+    int_to_byte(256)
+}
+
+// The width in bytes (1 to 4) of the UTF-8 sequence starting at byte offset
+// `i`, read from its leading byte. `i` must be on a scalar boundary.
+fn string_scalar_width(s String, i Int) Int {
+    let b Int = byte_to_int(string_byte_at(s, i))
+    if b < 128 { return 1 }
+    if b < 224 { return 2 }
+    if b < 240 { return 3 }
+    return 4
+}
+
+// The Unicode scalar value starting at byte offset `i`, which must be on a
+// scalar boundary.
+fn string_scalar_at(s String, i Int) Int {
+    let w Int = string_scalar_width(s, i)
+    let b0 Int = byte_to_int(string_byte_at(s, i))
+    if w == 1 { return b0 }
+    let mask Int = 31
+    if w == 3 { mask = 15 }
+    if w == 4 { mask = 7 }
+    let scalar Int = int_and(b0, mask)
+    let j Int = 1
+    while j < w {
+        scalar = int_or(int_shl(scalar, 6), int_and(byte_to_int(string_byte_at(s, i + j)), 63))
+        j = j + 1
+    }
+    return scalar
+}
+
+// The number of Unicode scalars in the string. O(n); compare with
+// string_len, which is the byte length.
+fn string_count_scalars(s String) Int {
+    let n Int = 0
+    let i Int = 0
+    while i < string_len(s) {
+        i = i + string_scalar_width(s, i)
+        n = n + 1
+    }
+    return n
+}
+
+fn string_starts_with(s String, prefix String) Bool {
+    if string_len(prefix) > string_len(s) {
+        return false
+    }
+    return string_eq(string_slice(s, 0, string_len(prefix)), prefix)
+}
+
+fn string_ends_with(s String, suffix String) Bool {
+    if string_len(suffix) > string_len(s) {
+        return false
+    }
+    return string_eq(string_slice(s, string_len(s) - string_len(suffix), string_len(s)), suffix)
+}
+
+// The byte offset of the first occurrence of `needle` in `s`, or -1 if it
+// does not occur. An empty needle is found at offset 0.
+fn string_index_of(s String, needle String) Int {
+    let n Int = string_len(needle)
+    let last Int = string_len(s) - n
+    let i Int = 0
+    while i <= last {
+        let j Int = 0
+        let found Bool = true
+        while j < n {
+            if string_byte_at(s, i + j) != string_byte_at(needle, j) {
+                found = false
+                break
+            }
+            j = j + 1
+        }
+        if found {
+            return i
+        }
+        i = i + 1
+    }
+    return -1
+}
+
+fn string_contains(s String, needle String) Bool {
+    return string_index_of(s, needle) >= 0
+}
+
+// Lexicographic comparison by bytes: -1 if a < b, 0 if equal, 1 if a > b.
+fn string_cmp(a String, b String) Int {
+    let la Int = string_len(a)
+    let lb Int = string_len(b)
+    let n Int = la
+    if lb < la {
+        n = lb
+    }
+    let i Int = 0
+    while i < n {
+        let x Byte = string_byte_at(a, i)
+        let y Byte = string_byte_at(b, i)
+        if x < y { return -1 }
+        if y < x { return 1 }
+        i = i + 1
+    }
+    if la < lb { return -1 }
+    if lb < la { return 1 }
+    return 0
+}
+
+fn int_to_string(n Int) String {
+    if n == 0 {
+        return "0"
+    }
+    let out String = ""
+    let m Int = n
+    while m != 0 {
+        // Remainders of a negative n are negative; negate the digit, not n,
+        // so the smallest Int (which has no positive counterpart) works.
+        let digit Int = m % 10
+        if digit < 0 {
+            digit = 0 - digit
+        }
+        out = string_concat(string_slice("0123456789", digit, digit + 1), out)
+        m = m / 10
+    }
+    if n < 0 {
+        return string_concat("-", out)
+    }
+    return out
+}
+
+// Parses a decimal integer with an optional leading minus sign. Traps on the
+// empty string or any non-digit character. Overflow wraps silently.
+fn string_to_int(s String) Int {
+    let len Int = string_len(s)
+    let negative Bool = false
+    let i Int = 0
+    if len > 0 {
+        if string_byte_at(s, 0) == int_to_byte(45) {
+            negative = true
+            i = 1
+        }
+    }
+    if i >= len {
+        trap()
+    }
+    let n Int = 0
+    while i < len {
+        let d Int = byte_to_int(string_byte_at(s, i)) - 48
+        if d < 0 {
+            trap()
+        }
+        if d > 9 {
+            trap()
+        }
+        n = n * 10 + d
+        i = i + 1
+    }
+    if negative {
+        return 0 - n
+    }
+    return n
+}

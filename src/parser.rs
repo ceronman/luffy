@@ -754,5 +754,16 @@ impl<'src> Parser<'src> {
 }
 
 pub fn parse(source: &str) -> Result<Module> {
-    Parser::new(source).module()
+    Ok(parse_with_start_id(source, 0)?.0)
+}
+
+/// Parses with node ids starting at `start_id`, returning the module and the
+/// next unused id. This lets a second source (the prelude) be parsed with
+/// ids disjoint from the user module's.
+pub fn parse_with_start_id(source: &str, start_id: u32) -> Result<(Module, u32)> {
+    let mut parser = Parser::new(source);
+    parser.id_counter = start_id;
+    let module = parser.module()?;
+    let next_id = parser.id_counter;
+    Ok((module, next_id))
 }

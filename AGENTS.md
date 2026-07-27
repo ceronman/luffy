@@ -41,6 +41,7 @@ Each stage's public entry point:
 
 - `lexer::Lexer::new(src).next_token()` / `next_significant()`
 - `parser::parse(src) -> Result<ast::Module>`
+- `prelude::parse_with_prelude(src) -> Result<ast::Module>` — what the driver and test harnesses actually call: parses, then splices in referenced prelude items (see "The Prelude" below)
 - `semantic::semantic_analysis(&module) -> Result<Semantics>`
 - `compiler::compile(&module, semantics) -> ir::Module`
 - `emit::emit(module) -> Vec<u8>`
@@ -54,6 +55,8 @@ src/
   ast.rs             — AST node types (canonical source of truth for what the language supports)
   lexer.rs           — Hand-written lexer; produces tokens including whitespace/comments
   parser.rs          — Recursive descent parser; consumes tokens, builds AST
+  prelude.rs         — Splices referenced prelude items into the user module
+  prelude.luffy      — The prelude: library functions written in Luffy
   semantic.rs        — Name resolution and type checking; produces Semantics
   compiler.rs        — Lowers AST + Semantics to IR (ir::Module)
   ir.rs              — Wasm-like IR: types, instructions, imports, exports
@@ -312,7 +315,21 @@ The current set:
 
 `int_to_byte` is the one multi-instruction lowering: it needs its argument twice, so it uses a per-function **i64 scratch local** (`Compiler::scratch_i64`), allocated lazily after params and user locals; `Compiler::function` appends it to the locals list when used. The single slot is safe to share between call sites because every inline sequence stores and consumes it without evaluating other expressions in between. The `if/unreachable` trap check opens a control frame, so the sequence wraps it in `loops.enter_frame()`/`exit_frame()` to keep `break`/`continue` label arithmetic correct.
 
-To add a new builtin: add its signature to `declare_builtins`, its lowering arm to `builtin_call` (plus a body in `synthesize` if it needs locals/loops), any new `ir::Instruction` variants + `emit.rs` encodings, and tests at the semantic/compiler/emit layers (`language_tour.md` has user-facing tables to extend).
+To add a new builtin: add its signature to `declare_builtins`, its lowering arm to `builtin_call` (plus a body in `synthesize` if it needs locals/loops), any new `ir::Instruction` variants + `emit.rs` encodings, and tests at the semantic/compiler/emit layers (`language_tour.md` has user-facing tables to extend). If the operation can be written in Luffy instead, prefer the prelude (below).
+
+---
+
+## The Prelude
+
+`src/prelude.luffy` is a library written in Luffy itself (scalar decoding, search, `string_cmp`, `int_to_string`/`string_to_int`, `trap`), embedded via `include_str!` and spliced into the user's module by `prelude::parse_with_prelude` (`src/prelude.rs`) — the entry point used by `main.rs` and all test harnesses in place of bare `parser::parse`.
+
+Mechanics:
+
+- **Disjoint node ids**: the user module parses first (ids from 0); the prelude parses with `parser::parse_with_start_id` continuing from the user module's next id.
+- **Usage-gated**: a prelude item is spliced in only if its name is referenced as a variable/callee in the user module or, transitively (fixpoint), in an already-included prelude item. Unused prelude costs nothing — which is why non-string snapshots never show prelude functions.
+- **Shadowing**: a user top-level declaration with a prelude item's name wins; that prelude item is skipped (unlike builtins, which collide with "already declared").
+- **Index stability**: included items are appended *after* the user's items, so user function indices never shift.
+- **Spans**: prelude `Span`s index into `prelude.luffy`, not the user source. Users must never see them: the prelude is validated on its own by `prelude::test::prelude_parses_and_typechecks`, and call-site errors (wrong argument types, arity) always point at user source. Any error annotated with a prelude span is a compiler bug.
 
 ---
 

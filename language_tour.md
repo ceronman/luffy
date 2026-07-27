@@ -701,7 +701,44 @@ export fn main() {
 | `bytes_new(n Int) Array[Byte]` | a new zero-filled array of length `n` |
 | `bytes_copy(dst Array[Byte], dst_off Int, src Array[Byte], src_off Int, n Int)` | copies `n` bytes; **traps** if either range is out of bounds |
 
-These are the building blocks for growable buffers (a `StringBuilder` arrives with the prelude in a later phase).
+These are the building blocks for growable buffers (a `StringBuilder` arrives in a later phase).
+
+---
+
+## The prelude
+
+Beyond the builtins, Luffy ships a small library written in Luffy itself — the *prelude*. Prelude functions are ordinary functions: they type-check, compile, and run exactly like functions you write yourself. The compiler splices into your program only the ones it (transitively) references, so unused prelude functions cost nothing.
+
+| Function | Result |
+|----------|--------|
+| `string_scalar_width(s String, i Int) Int` | width in bytes (1–4) of the UTF-8 sequence at byte offset `i` |
+| `string_scalar_at(s String, i Int) Int` | the Unicode scalar value at byte offset `i` |
+| `string_count_scalars(s String) Int` | number of Unicode scalars; O(n), unlike the O(1) byte-length `string_len` |
+| `string_starts_with(s String, prefix String) Bool` | |
+| `string_ends_with(s String, suffix String) Bool` | |
+| `string_index_of(s String, needle String) Int` | byte offset of the first occurrence, or `-1`; an empty needle is found at 0 |
+| `string_contains(s String, needle String) Bool` | |
+| `string_cmp(a String, b String) Int` | lexicographic by bytes: `-1`, `0`, or `1` |
+| `int_to_string(n Int) String` | decimal, with `-` for negatives |
+| `string_to_int(s String) Int` | parses decimal with optional leading `-`; **traps** on the empty string or a non-digit; overflow wraps |
+| `trap()` | traps unconditionally |
+
+The scalar functions assume valid UTF-8 and that `i` sits on a scalar boundary (use `string_scalar_width` to step from one boundary to the next):
+
+```luffy
+import fn print_int(x Int)
+
+export fn main() {
+    let s String = "aé😀"
+    let i Int = 0
+    while i < string_len(s) {
+        print_int(string_scalar_at(s, i))   // 97, 233, 128512
+        i = i + string_scalar_width(s, i)
+    }
+}
+```
+
+Declaring your own top-level function with a prelude name is allowed — your definition shadows the prelude's (unlike builtin names, which are errors to redefine).
 
 ---
 
